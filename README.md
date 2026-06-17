@@ -1,6 +1,6 @@
 # DataLens AI
 
-**🔗 Live Demo → [connor-ai-analyst.streamlit.app](https://connor-ai-analyst.streamlit.app)**
+**🔗 Live Demo → [AI Business Data Analyst](https://datalens-ai-ja8hzskzkzvyfdrcesyusu.streamlit.app)**
 
 An AI-powered business analytics tool that lets you upload any CSV dataset and instantly generate executive summaries, driver analysis, anomaly detection, forecasts, and natural language Q&A — no SQL or coding required.
 
