@@ -87,8 +87,8 @@ INDUSTRY_TEMPLATES = {
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="DataLens AI",
-    page_icon="📊",
+    page_title="ARIA — AI Research & Insight Analyst",
+    page_icon="🔶",
     layout="wide"
 )
 
@@ -105,27 +105,27 @@ client = anthropic.Anthropic(api_key=_api_key)
 
 st.markdown("""
 <style>
-    /* ── Global — dot-grid background ── */
+    /* ── Global — warm charcoal dot-grid background ── */
     .stApp {
-        background-color: #edf1fa;
-        background-image: radial-gradient(#c2d0ea 1px, transparent 1px);
+        background-color: #f5f0e8;
+        background-image: radial-gradient(#ddd5c2 1px, transparent 1px);
         background-size: 24px 24px;
     }
     .main { padding: 1.5rem 2.5rem; }
 
     /* ── Typography ── */
-    h1 { font-size: 1.8rem !important; font-weight: 800 !important; color: #0d1b2a !important;
+    h1 { font-size: 1.8rem !important; font-weight: 800 !important; color: #1c1c1e !important;
          letter-spacing: -0.02em !important; }
     h3 { font-size: 1rem !important; font-weight: 700 !important;
-         color: #0d1b2a !important; margin-top: 1.5rem !important;
+         color: #1c1c1e !important; margin-top: 1.5rem !important;
          text-transform: uppercase; letter-spacing: 0.04em !important; }
 
     /* ── Suggestion pill buttons ── */
     .stButton > button {
         background: linear-gradient(white, white) padding-box,
-                    linear-gradient(135deg, #c8d8f5, #ddd0fb) border-box;
+                    linear-gradient(135deg, #f59e0b, #d97706) border-box;
         border: 1.5px solid transparent;
-        color: #1a4a8a;
+        color: #1c1c1e;
         border-radius: 9px;
         padding: 0.5rem 1rem;
         font-size: 0.82rem;
@@ -138,81 +138,81 @@ st.markdown("""
         line-height: 1.4;
     }
     .stButton > button:hover {
-        background: linear-gradient(135deg, #0066cc, #6366f1) !important;
-        color: white !important;
+        background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+        color: #1c1c1e !important;
         border-color: transparent;
-        box-shadow: 0 4px 14px rgba(0,102,204,0.28);
+        box-shadow: 0 4px 14px rgba(245,158,11,0.35);
         transform: translateY(-2px);
     }
 
     /* ── Primary Analyze button ── */
     .stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, #0066cc 0%, #6366f1 100%);
-        color: white;
-        border: none;
+        background: linear-gradient(135deg, #1c1c1e 0%, #3a3a3a 100%);
+        color: #f59e0b;
+        border: 2px solid #f59e0b;
         border-radius: 10px;
         padding: 0.65rem 2.4rem;
         font-size: 0.95rem;
         font-weight: 700;
         letter-spacing: 0.02em;
-        box-shadow: 0 6px 20px rgba(0,102,204,0.4), 0 2px 6px rgba(99,102,241,0.25);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.3), 0 2px 6px rgba(245,158,11,0.2);
         text-align: center;
         width: 100%;
         height: auto;
     }
     .stButton > button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #0052a3 0%, #4f52d4 100%);
-        color: white !important;
-        border: none;
-        box-shadow: 0 8px 28px rgba(0,102,204,0.5), 0 4px 10px rgba(99,102,241,0.3);
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        color: #1c1c1e !important;
+        border-color: #f59e0b;
+        box-shadow: 0 8px 28px rgba(245,158,11,0.45);
         transform: translateY(-2px);
     }
 
     /* ── Answer box (legacy) ── */
     .answer-box {
         background: #ffffff;
-        border-left: 4px solid #0066cc;
+        border-left: 4px solid #f59e0b;
         border-radius: 0 10px 10px 0;
         padding: 1.3rem 1.6rem;
         margin-top: 0.75rem;
         line-height: 1.75;
-        color: #1a1a2e !important;
+        color: #1c1c1e !important;
         box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
     .answer-box p, .answer-box li, .answer-box span,
     .answer-box strong, .answer-box em, .answer-box code {
-        color: #1a1a2e !important;
+        color: #1c1c1e !important;
     }
 
     /* ── Executive summary ── */
     .summary-box {
-        background: linear-gradient(135deg, #e8f0fe 0%, #ede9fe 100%);
+        background: linear-gradient(135deg, #fffbf0 0%, #fef3c7 100%);
         border-radius: 14px;
         padding: 1.2rem 1.4rem 1.2rem 1.6rem;
-        border: 1px solid #c7d7f9;
+        border: 1px solid #fcd34d;
         border-left: none;
         position: relative;
         overflow: hidden;
         font-size: 0.95rem;
         line-height: 1.75;
-        color: #1a1a2e;
-        box-shadow: 0 4px 18px rgba(0,102,204,0.11), 0 1px 4px rgba(0,0,0,0.05);
+        color: #1c1c1e;
+        box-shadow: 0 4px 18px rgba(245,158,11,0.12), 0 1px 4px rgba(0,0,0,0.05);
     }
     .summary-box::before {
         content: "";
         position: absolute;
         top: 0; left: 0; bottom: 0;
         width: 5px;
-        background: linear-gradient(180deg, #0066cc, #6366f1);
+        background: linear-gradient(180deg, #f59e0b, #d97706);
     }
 
     /* ── Metric cards ── */
     [data-testid="metric-container"] {
-        background: linear-gradient(135deg, #ffffff 0%, #f5f8ff 100%);
-        border: 1px solid #dce8f8;
+        background: linear-gradient(135deg, #ffffff 0%, #fffbf0 100%);
+        border: 1px solid #fcd34d;
         border-radius: 16px;
         padding: 1.2rem 1.3rem 1.1rem 1.3rem;
-        box-shadow: 0 6px 20px rgba(0,102,204,0.08), 0 1px 4px rgba(0,0,0,0.04);
+        box-shadow: 0 6px 20px rgba(245,158,11,0.1), 0 1px 4px rgba(0,0,0,0.04);
         position: relative;
         overflow: hidden;
     }
@@ -221,35 +221,35 @@ st.markdown("""
         position: absolute;
         top: 0; left: 0; right: 0;
         height: 4px;
-        background: linear-gradient(90deg, #0066cc, #6366f1);
+        background: linear-gradient(90deg, #f59e0b, #d97706);
         border-radius: 16px 16px 0 0;
     }
     [data-testid="metric-container"] [data-testid="stMetricValue"] {
         font-size: 1.75rem !important;
         font-weight: 900 !important;
-        color: #0d1b2a !important;
+        color: #1c1c1e !important;
         letter-spacing: -0.03em !important;
     }
     [data-testid="metric-container"] [data-testid="stMetricLabel"] {
         font-size: 0.68rem !important;
         font-weight: 700 !important;
-        color: #6a80a0 !important;
+        color: #6a6a6a !important;
         text-transform: uppercase !important;
         letter-spacing: 0.09em !important;
     }
     [data-testid="metric-container"] [data-testid="stMetricDelta"] {
-        color: #0066cc !important;
+        color: #d97706 !important;
     }
 
     /* ── Hero landing card ── */
     .hero-card {
-        background: linear-gradient(135deg, #060e1a 0%, #0d2a56 55%, #1a3a70 100%);
+        background: linear-gradient(135deg, #1c1c1e 0%, #2d2d2d 55%, #3a3a3a 100%);
         border-radius: 20px;
         padding: 3.25rem 3.5rem 2.75rem 3.5rem;
-        border: 1px solid rgba(255,255,255,0.08);
+        border: 1px solid rgba(245,158,11,0.2);
         text-align: center;
         margin: 0.5rem 0 1.5rem 0;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.28), 0 4px 16px rgba(0,102,204,0.2);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.35), 0 4px 16px rgba(245,158,11,0.15);
         position: relative;
         overflow: hidden;
     }
@@ -258,7 +258,7 @@ st.markdown("""
         position: absolute;
         top: -80px; right: -60px;
         width: 340px; height: 340px;
-        background: radial-gradient(circle, rgba(99,102,241,0.38) 0%, transparent 68%);
+        background: radial-gradient(circle, rgba(245,158,11,0.25) 0%, transparent 68%);
         border-radius: 50%;
         pointer-events: none;
     }
@@ -267,7 +267,7 @@ st.markdown("""
         position: absolute;
         bottom: -90px; left: -50px;
         width: 280px; height: 280px;
-        background: radial-gradient(circle, rgba(0,102,204,0.32) 0%, transparent 68%);
+        background: radial-gradient(circle, rgba(217,119,6,0.2) 0%, transparent 68%);
         border-radius: 50%;
         pointer-events: none;
     }
@@ -295,12 +295,12 @@ st.markdown("""
         position: relative; z-index: 1;
     }
     .hero-feature {
-        background: rgba(255,255,255,0.1);
+        background: rgba(245,158,11,0.15);
         border-radius: 8px;
         padding: 0.55rem 1.1rem;
         font-size: 0.82rem;
-        color: rgba(255,255,255,0.88);
-        border: 1px solid rgba(255,255,255,0.18);
+        color: #fbbf24;
+        border: 1px solid rgba(245,158,11,0.3);
         backdrop-filter: blur(6px);
         font-weight: 500;
     }
@@ -314,18 +314,18 @@ st.markdown("""
     }
     .section-header-icon {
         width: 28px; height: 28px;
-        background: linear-gradient(135deg, #0066cc, #6366f1);
+        background: linear-gradient(135deg, #f59e0b, #d97706);
         border-radius: 8px;
         display: flex; align-items: center; justify-content: center;
         font-size: 0.8rem; flex-shrink: 0;
-        box-shadow: 0 4px 12px rgba(0,102,204,0.42);
+        box-shadow: 0 4px 12px rgba(245,158,11,0.4);
     }
     .section-header-text {
         font-size: 0.75rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.12em;
-        color: #3a4f70;
+        color: #4a4a4a;
     }
 
     /* ── Question label ── */
@@ -334,7 +334,7 @@ st.markdown("""
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.1em;
-        color: #7a8aaa;
+        color: #7a7a7a;
         margin-bottom: 0.6rem;
     }
 
@@ -345,34 +345,34 @@ st.markdown("""
         gap: 0.5rem;
         margin-bottom: 0.8rem;
         padding-bottom: 0.7rem;
-        border-bottom: 1px solid #eef2fa;
+        border-bottom: 1px solid #f0e8d8;
     }
     .answer-badge {
-        background: linear-gradient(135deg, #0066cc, #6366f1);
-        color: white;
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        color: #1c1c1e;
         font-size: 0.65rem;
         font-weight: 700;
         letter-spacing: 0.09em;
         text-transform: uppercase;
         padding: 0.22rem 0.65rem;
         border-radius: 20px;
-        box-shadow: 0 2px 8px rgba(0,102,204,0.3);
+        box-shadow: 0 2px 8px rgba(245,158,11,0.3);
     }
     .answer-card {
         background:
             linear-gradient(#ffffff, #ffffff) padding-box,
-            linear-gradient(135deg, #0066cc 0%, #6366f1 100%) border-box;
+            linear-gradient(135deg, #f59e0b 0%, #d97706 100%) border-box;
         border: 2px solid transparent;
         border-radius: 16px;
         padding: 1.4rem 1.6rem 1.2rem 1.6rem;
-        box-shadow: 0 8px 32px rgba(0,102,204,0.13), 0 2px 8px rgba(0,0,0,0.05);
+        box-shadow: 0 8px 32px rgba(245,158,11,0.12), 0 2px 8px rgba(0,0,0,0.05);
         margin: 0.5rem 0 1rem 0;
     }
     .answer-card p, .answer-card li, .answer-card h1,
     .answer-card h2, .answer-card h3, .answer-card strong,
     .answer-card em, .answer-card code, .answer-card td,
     .answer-card th, .answer-card span {
-        color: #1a1a2e !important;
+        color: #1c1c1e !important;
     }
     .answer-card ul, .answer-card ol {
         padding-left: 1.5rem;
@@ -386,23 +386,23 @@ st.markdown("""
     .history-item {
         background: #ffffff;
         border-radius: 12px;
-        border-right: 1px solid #e8eef8;
-        border-top: 1px solid #e8eef8;
-        border-bottom: 1px solid #e8eef8;
-        border-left: 4px solid #0066cc;
+        border-right: 1px solid #e8e0d0;
+        border-top: 1px solid #e8e0d0;
+        border-bottom: 1px solid #e8e0d0;
+        border-left: 4px solid #f59e0b;
         padding: 1rem 1.25rem;
         margin-bottom: 0.75rem;
         box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         transition: box-shadow 0.15s, transform 0.15s;
     }
     .history-item:hover {
-        box-shadow: 0 4px 18px rgba(0,102,204,0.12);
+        box-shadow: 0 4px 18px rgba(245,158,11,0.15);
         transform: translateX(2px);
     }
     .history-q {
         font-size: 0.84rem;
         font-weight: 600;
-        color: #0052a3;
+        color: #b45309;
         margin-bottom: 0.5rem;
         display: flex;
         align-items: flex-start;
@@ -410,42 +410,42 @@ st.markdown("""
     }
     .history-a {
         font-size: 0.84rem;
-        color: #3a4a65;
+        color: #3a3a3a;
         line-height: 1.65;
-        border-top: 1px solid #f0f4fa;
+        border-top: 1px solid #f0e8d8;
         padding-top: 0.65rem;
     }
 
     /* ── Sidebar ── */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #060e1a 0%, #0d1b2a 100%);
-        border-right: none;
-        box-shadow: 4px 0 24px rgba(0,0,0,0.18);
+        background: linear-gradient(180deg, #1c1c1e 0%, #2d2d2d 100%);
+        border-right: 1px solid rgba(245,158,11,0.2);
+        box-shadow: 4px 0 24px rgba(0,0,0,0.25);
     }
-    [data-testid="stSidebar"] * { color: #c8d8f0 !important; }
+    [data-testid="stSidebar"] * { color: #d4c8b0 !important; }
     [data-testid="stSidebar"] h1 { color: #ffffff !important; font-size: 1.1rem !important;
         font-weight: 800 !important; letter-spacing: -0.01em !important; }
-    [data-testid="stSidebar"] strong { color: #e8edf5 !important; }
-    [data-testid="stSidebar"] hr { border-color: #1e3a5f !important; }
+    [data-testid="stSidebar"] strong { color: #f0e8d8 !important; }
+    [data-testid="stSidebar"] hr { border-color: #3a3a3a !important; }
     [data-testid="stSidebar"] .stCaption,
-    [data-testid="stSidebar"] caption { color: #6a80a0 !important; }
+    [data-testid="stSidebar"] caption { color: #7a7060 !important; }
 
     /* Sidebar selectbox — dark themed */
     [data-testid="stSidebar"] [data-baseweb="select"] > div {
-        background-color: #1e3a5f !important;
-        border-color: #2a4f7a !important;
+        background-color: #3a3a3a !important;
+        border-color: #f59e0b !important;
     }
-    [data-testid="stSidebar"] [data-baseweb="select"] * { color: #e8edf5 !important; }
-    [data-testid="stSidebar"] [data-baseweb="select"] span { color: #e8edf5 !important; }
-    [data-testid="stSidebar"] [data-baseweb="select"] [data-testid="stMarkdownContainer"] p { color: #e8edf5 !important; }
-    [data-testid="stSidebar"] div[class*="ValueContainer"] { color: #e8edf5 !important; }
-    [data-testid="stSidebar"] div[class*="singleValue"] { color: #e8edf5 !important; }
-    [data-testid="stSidebar"] input { color: #e8edf5 !important; }
+    [data-testid="stSidebar"] [data-baseweb="select"] * { color: #f0e8d8 !important; }
+    [data-testid="stSidebar"] [data-baseweb="select"] span { color: #f0e8d8 !important; }
+    [data-testid="stSidebar"] [data-baseweb="select"] [data-testid="stMarkdownContainer"] p { color: #f0e8d8 !important; }
+    [data-testid="stSidebar"] div[class*="ValueContainer"] { color: #f0e8d8 !important; }
+    [data-testid="stSidebar"] div[class*="singleValue"] { color: #f0e8d8 !important; }
+    [data-testid="stSidebar"] input { color: #f0e8d8 !important; }
 
     /* Sidebar file uploader */
     [data-testid="stSidebar"] [data-testid="stFileUploader"] {
-        background-color: #1e3a5f;
-        border-color: #2a4f7a !important;
+        background-color: #3a3a3a;
+        border-color: #f59e0b !important;
         border-radius: 8px;
     }
 
@@ -458,16 +458,16 @@ st.markdown("""
     }
     .sidebar-brand-icon {
         width: 36px; height: 36px;
-        background: linear-gradient(135deg, #0066cc, #6366f1);
+        background: linear-gradient(135deg, #f59e0b, #d97706);
         border-radius: 10px;
         display: flex; align-items: center; justify-content: center;
         font-size: 1.15rem; line-height: 1; flex-shrink: 0;
-        box-shadow: 0 4px 14px rgba(0,102,204,0.45);
+        box-shadow: 0 4px 14px rgba(245,158,11,0.45);
     }
     .sidebar-brand-text {
         font-size: 1.05rem;
         font-weight: 800;
-        background: linear-gradient(135deg, #ffffff, #a5c8ff);
+        background: linear-gradient(135deg, #ffffff, #fbbf24);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -475,32 +475,32 @@ st.markdown("""
     }
     .sidebar-brand-sub {
         font-size: 0.68rem;
-        color: #5a72a0;
+        color: #7a7060;
         letter-spacing: 0.1em;
         text-transform: uppercase;
     }
 
     /* ── Sidebar credit card ── */
     .sidebar-credit {
-        background: rgba(255,255,255,0.05);
+        background: rgba(245,158,11,0.08);
         border-radius: 12px;
         padding: 0.9rem 1rem;
-        border: 1px solid rgba(255,255,255,0.08);
+        border: 1px solid rgba(245,158,11,0.2);
         margin-top: 0.25rem;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.07);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
     }
     .sidebar-credit .name {
         font-size: 0.92rem;
         font-weight: 600;
-        color: #e8edf5 !important;
+        color: #f0e8d8 !important;
     }
     .sidebar-credit .detail {
         font-size: 0.76rem;
-        color: #6a80a0 !important;
+        color: #7a7060 !important;
         margin-top: 0.2rem;
         line-height: 1.5;
     }
-    .sidebar-credit a { color: #60a5fa !important; text-decoration: none; }
+    .sidebar-credit a { color: #fbbf24 !important; text-decoration: none; }
     .sidebar-credit a:hover { text-decoration: underline; }
 </style>
 """, unsafe_allow_html=True)
@@ -509,10 +509,10 @@ st.markdown("""
 with st.sidebar:
     st.markdown("""
     <div class="sidebar-brand">
-        <div class="sidebar-brand-icon">📊</div>
+        <div class="sidebar-brand-icon">🔶</div>
         <div>
-            <div class="sidebar-brand-text">DataLens AI</div>
-            <div class="sidebar-brand-sub">Business Analytics</div>
+            <div class="sidebar-brand-text">ARIA</div>
+            <div class="sidebar-brand-sub">AI Research & Insight Analyst</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -559,15 +559,18 @@ with st.sidebar:
 
 # ── Main heading ───────────────────────────────────────────────────────────────
 st.markdown("""
-<div style="padding: 0.5rem 0 1.5rem 0; border-bottom: 2px solid #d8e4f4; margin-bottom: 1.5rem;">
+<div style="padding: 0.5rem 0 1.5rem 0; border-bottom: 2px solid #e8d8b0; margin-bottom: 1.5rem;">
     <div style="font-size:2rem; font-weight:900; letter-spacing:-0.03em; line-height:1.15; margin-bottom:0.3rem;">
-        <span style="background: linear-gradient(135deg, #0d1b2a 0%, #0052a3 60%, #6366f1 100%);
+        <span style="background: linear-gradient(135deg, #1c1c1e 0%, #f59e0b 60%, #d97706 100%);
                      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-                     background-clip: text;">AI Business Data Analyst</span>
+                     background-clip: text;">ARIA</span>
+        <span style="font-size:1.1rem; font-weight:400; color:#6a6a6a; margin-left:0.75rem; vertical-align:middle;">
+            AI Research & Insight Analyst
+        </span>
     </div>
-    <p style="color: #5a6a85; font-size: 1rem; margin: 0; font-weight: 400;">
+    <p style="color: #6a6a6a; font-size: 1rem; margin: 0; font-weight: 400;">
         Upload any spreadsheet and ask questions in plain English.
-        Powered by <strong style="color: #0052a3;">Anthropic Claude</strong>.
+        Powered by <strong style="color: #d97706;">Anthropic Claude</strong>.
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -1093,16 +1096,28 @@ def build_df_info(df, label="Dataset"):
         # Find a ship-date column (exclude the order-date column itself)
         ship_col = next(
             (c for c in df.columns if any(kw in c.lower() for kw in
-             ["ship date", "ship_date", "shipdate", "delivery date",
+             ["ship date", "ship_date", "shipdate", "shipping date",
+              "shipping_date", "shippingdate", "delivery date",
               "delivered date", "fulfillment date"])
              and c != order_col),
             None
         )
 
         if order_col and ship_col:
-            order_dates = pd.to_datetime(df[order_col], errors="coerce")
-            ship_dates  = pd.to_datetime(df[ship_col],  errors="coerce")
-            days_diff   = (ship_dates - order_dates).dt.days
+            # Try dayfirst=True first (DD/MM/YYYY), fall back to default (MM/DD/YYYY)
+            try:
+                order_dates = pd.to_datetime(df[order_col], dayfirst=True, errors="coerce")
+                ship_dates  = pd.to_datetime(df[ship_col],  dayfirst=True, errors="coerce")
+                days_diff   = (ship_dates - order_dates).dt.days
+                # Sanity check: if median shipping time > 60 days, try without dayfirst
+                if days_diff.dropna().median() > 60:
+                    order_dates = pd.to_datetime(df[order_col], errors="coerce")
+                    ship_dates  = pd.to_datetime(df[ship_col],  errors="coerce")
+                    days_diff   = (ship_dates - order_dates).dt.days
+            except Exception:
+                order_dates = pd.to_datetime(df[order_col], errors="coerce")
+                ship_dates  = pd.to_datetime(df[ship_col],  errors="coerce")
+                days_diff   = (ship_dates - order_dates).dt.days
 
             valid_mask = days_diff.notna() & (days_diff >= 0)
             if valid_mask.sum() > 10:
@@ -1336,7 +1351,7 @@ Instructions:
 4. Format numbers clearly with commas (e.g. "2,261,536"). Use $ for currency values where appropriate.
 5. Always name both parties explicitly in comparisons — never say "roughly X vs Y" without names.
 6. Structure your answer as a numbered list of findings. Do not use markdown headers (lines starting with #) — use plain numbered points and bold text only.
-7. End with a "Key Insight:" section that goes beyond the obvious.
+7. End with a "Strategic Implication:" section that goes beyond the obvious.
    - Do NOT state things any manager already knows (e.g., "top performers perform well").
    - DO identify hidden risks, structural patterns, or strategic implications.
    - Think like a consultant advising the CEO: what decision does this number actually drive?
@@ -1410,7 +1425,7 @@ def try_render_chart(answer_text):
                     fig = px.line(
                         chart_df, x="Label", y="Value", title=title, markers=True
                     )
-                    fig.update_traces(line_color="#0066cc", marker_color="#0066cc")
+                    fig.update_traces(line_color="#f59e0b", marker_color="#f59e0b")
                 else:
                     fig = px.bar(
                         chart_df, x="Label", y="Value", title=title,
@@ -1814,8 +1829,8 @@ def compute_insight_cards(df: pd.DataFrame, da: dict) -> list:
                         f"{_fmt_val(top_val, target)} in {target} — "
                         f"{top_pct:.0f}% of total"
                     ),
-                    "color": "#0066cc",
-                    "bg": "#e8f0fe",
+                    "color": "#f59e0b",
+                    "bg": "#fffbf0",
                 })
 
     # ── Card 2: Trend Signal ──────────────────────────────────────────────────
@@ -1888,8 +1903,8 @@ def compute_insight_cards(df: pd.DataFrame, da: dict) -> list:
             "label": "Key Driver",
             "headline": f"{top_drv_name} drives {tgt_name}",
             "detail": drv_detail,
-            "color": "#6366f1",
-            "bg": "#ede9fe",
+            "color": "#d97706",
+            "bg": "#fef3c7",
         })
 
     # ── Card 5: Dataset Scale ─────────────────────────────────────────────────
@@ -1931,7 +1946,7 @@ def generate_report_html(filename, summary, history, filename2=None):
             title_json  = json.dumps(cd.get("title", ""))
             chart_type  = "line" if cd.get("type") == "line" else "bar"
             chart_html = f'<canvas id="{cid}" style="max-height:320px;margin:1rem 0"></canvas>'
-            color = "'rgba(0,102,204,0.75)'" if chart_type == "bar" else "'#0066cc'"
+            color = "'rgba(245,158,11,0.75)'" if chart_type == "bar" else "'#f59e0b'"
             chart_scripts += f"""
             (function() {{
                 var ctx = document.getElementById('{cid}').getContext('2d');
@@ -1943,7 +1958,7 @@ def generate_report_html(filename, summary, history, filename2=None):
                             label: {title_json},
                             data: {values_json},
                             backgroundColor: {color},
-                            borderColor: '#0066cc',
+                            borderColor: '#f59e0b',
                             borderWidth: 2,
                             tension: 0.3,
                             fill: false,
@@ -1984,14 +1999,14 @@ def generate_report_html(filename, summary, history, filename2=None):
 <style>
     body {{ font-family: Arial, sans-serif; max-width: 860px; margin: 40px auto;
            color: #333; line-height: 1.6; padding: 0 1rem; }}
-    h1 {{ color: #0066cc; border-bottom: 2px solid #0066cc; padding-bottom: 0.5rem; }}
-    h2 {{ color: #0066cc; margin-top: 2rem; }}
+    h1 {{ color: #d97706; border-bottom: 2px solid #f59e0b; padding-bottom: 0.5rem; }}
+    h2 {{ color: #d97706; margin-top: 2rem; }}
     .meta {{ color: #666; font-size: 0.9rem; margin-bottom: 2rem; }}
     .summary {{ background: #f0f7ff; padding: 1.2rem; border-radius: 6px;
                 margin-bottom: 2rem; white-space: pre-wrap; }}
     .qa-block {{ margin-bottom: 1.8rem; border-bottom: 1px solid #eee;
                  padding-bottom: 1.5rem; }}
-    .question {{ font-weight: bold; color: #0066cc; margin-bottom: 0.5rem; }}
+    .question {{ font-weight: bold; color: #d97706; margin-bottom: 0.5rem; }}
     .answer {{ white-space: pre-wrap; }}
     .footer {{ margin-top: 3rem; color: #999; font-size: 0.8rem;
                border-top: 1px solid #eee; padding-top: 1rem; }}
@@ -2462,7 +2477,7 @@ if uploaded_file is not None or using_sample:
                 )[0]
                 all_vals = top_info["all_vals"]
                 all_z    = top_info["all_z"]
-                colors   = ["#e53e3e" if abs(z) > 2.5 else "#0066cc" for z in all_z]
+                colors   = ["#e53e3e" if abs(z) > 2.5 else "#f59e0b" for z in all_z]
                 anom_fig = go.Figure()
                 anom_fig.add_trace(go.Scatter(
                     x=list(range(len(all_vals))),
@@ -2517,7 +2532,7 @@ if uploaded_file is not None or using_sample:
                 # Use absolute value for bar length; color by type
                 vals_d  = [abs(i[1]["score"]) for i in items]
                 colors_d = [
-                    "#0066cc" if i[1]["type"] == "numeric" else "#6366f1"
+                    "#f59e0b" if i[1]["type"] == "numeric" else "#d97706"
                     for i in items
                 ]
                 drv_fig = go.Figure(go.Bar(
@@ -2591,7 +2606,7 @@ if uploaded_file is not None or using_sample:
                     x=hist_dates, y=hist_vals,
                     mode="lines+markers",
                     name="Actual",
-                    line=dict(color="#0066cc", width=2),
+                    line=dict(color="#f59e0b", width=2),
                     marker=dict(size=4),
                     hovertemplate="%{y:,.0f}<extra>Actual</extra>",
                 ))
@@ -2601,7 +2616,7 @@ if uploaded_file is not None or using_sample:
                     y=[hist_vals[-1]]  + fcast_vals,
                     mode="lines+markers",
                     name="Forecast",
-                    line=dict(color="#6366f1", width=2, dash="dash"),
+                    line=dict(color="#d97706", width=2, dash="dash"),
                     marker=dict(size=4, symbol="diamond"),
                     hovertemplate="%{y:,.0f}<extra>Forecast</extra>",
                 ))
@@ -2783,9 +2798,9 @@ if uploaded_file is not None or using_sample:
     st.markdown("""
     <div class="section-header">
         <div class="section-header-icon">💬</div>
-        <div class="section-header-text">Ask a Question</div>
+        <div class="section-header-text">Query Panel</div>
     </div>
-    <div class="question-label">Suggested questions</div>
+    <div class="question-label">Analysis starting points</div>
     """, unsafe_allow_html=True)
 
     suggestions = st.session_state.get("suggestions", [])
@@ -2797,10 +2812,10 @@ if uploaded_file is not None or using_sample:
     # Advanced analysis questions — AI-generated and tailored to this dataset
     _adv_qs = st.session_state.get("advanced_questions", [])
     if _adv_qs:
-        with st.expander("🔍 Advanced Analysis — click to expand"):
+        with st.expander("🔍 Strategic Questions — click to expand"):
             st.caption(
                 "Consultant-level questions generated specifically for your data — "
-                "designed to surface hidden patterns and strategic insights."
+                "designed to surface hidden patterns and strategic implications."
             )
             adv_cols = st.columns(2)
             for i, q in enumerate(_adv_qs):
@@ -2844,8 +2859,8 @@ if uploaded_file is not None or using_sample:
                     _encoded = base64.b64encode(clean_answer.encode()).decode()
                     st.markdown("""
                     <div class="section-header" style="margin-top:1.2rem;">
-                        <div class="section-header-icon">✨</div>
-                        <div class="section-header-text">AI Answer</div>
+                        <div class="section-header-icon">📊</div>
+                        <div class="section-header-text">Analysis</div>
                     </div>
                     """, unsafe_allow_html=True)
                     _answer_html = _md_to_html(fix_dollar_signs(clean_answer))
@@ -2860,12 +2875,12 @@ if uploaded_file is not None or using_sample:
                                 this.style.color='#16a34a';
                                 this.style.borderColor='#bbf7d0';
                                 setTimeout(()=>{{this.textContent='📋 Copy';
-                                    this.style.color='#0066cc';
-                                    this.style.borderColor='#dce8f8';}},2000);
+                                    this.style.color='#d97706';
+                                    this.style.borderColor='#fcd34d';}},2000);
                             }});"
-                            style="background:transparent;border:1.5px solid #dce8f8;
+                            style="background:transparent;border:1.5px solid #fcd34d;
                                    border-radius:20px;padding:3px 12px;font-size:11px;
-                                   color:#0066cc;cursor:pointer;font-family:inherit;
+                                   color:#d97706;cursor:pointer;font-family:inherit;
                                    margin-top:2px;">
                             📋 Copy
                         </button>""",
@@ -2897,7 +2912,7 @@ if uploaded_file is not None or using_sample:
             st.markdown(f"""
             <div class="history-item">
                 <div class="history-q">
-                    <span style="color:#0066cc;margin-top:1px;">▸</span>
+                    <span style="color:#f59e0b;margin-top:1px;">▸</span>
                     {item['question']}
                 </div>
                 <div class="history-a">{_a_preview}</div>
