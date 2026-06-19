@@ -449,6 +449,54 @@ st.markdown("""
         border-radius: 8px;
     }
 
+    /* Sidebar date_input — dark theme */
+    [data-testid="stSidebar"] [data-testid="stDateInput"] label { color: #d4c8b0 !important; }
+    [data-testid="stSidebar"] [data-testid="stDateInput"] input {
+        background: #3a3a3a !important;
+        color: #f0e8d8 !important;
+        border-color: rgba(245,158,11,0.35) !important;
+        border-radius: 6px !important;
+    }
+
+    /* Sidebar multiselect — dark theme */
+    [data-testid="stSidebar"] [data-testid="stMultiSelect"] label { color: #d4c8b0 !important; }
+    [data-testid="stSidebar"] [data-testid="stMultiSelect"] [data-baseweb="select"] > div {
+        background-color: #3a3a3a !important;
+        border-color: rgba(245,158,11,0.35) !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stMultiSelect"] [data-baseweb="tag"] {
+        background: rgba(245,158,11,0.25) !important;
+        border-color: rgba(245,158,11,0.4) !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stMultiSelect"] [data-baseweb="tag"] span {
+        color: #f0e8d8 !important;
+    }
+
+    /* Expander headers — native HTML selector, works regardless of Streamlit version */
+    details > summary {
+        color: #1c1c1e !important;
+        font-weight: 600 !important;
+    }
+    details > summary:hover { color: #d97706 !important; }
+    details > summary * { color: #1c1c1e !important; }
+    [data-testid="stExpander"] summary { color: #1c1c1e !important; font-weight: 600 !important; }
+    [data-testid="stExpander"] summary * { color: #1c1c1e !important; }
+
+    /* Captions and small labels in main content */
+    .stCaption, [data-testid="stCaptionContainer"] p { color: #5a5a5a !important; }
+
+    /* Spinner text */
+    [data-testid="stSpinner"] p,
+    [data-testid="stSpinner"] span,
+    .stSpinner p, .stSpinner span,
+    div[class*="stSpinner"] p { color: #1c1c1e !important; }
+
+    /* Metric containers — reinforce text colors robustly */
+    [data-testid="metric-container"] { color: #1c1c1e; }
+    [data-testid="metric-container"] label { color: #6a6a6a !important; font-size: 0.68rem !important; }
+    [data-testid="metric-container"] [data-testid="stMetricValue"] { color: #1c1c1e !important; }
+    [data-testid="metric-container"] [data-testid="stMetricLabel"] { color: #6a6a6a !important; }
+
     /* ── Sidebar brand block ── */
     .sidebar-brand {
         display: flex;
@@ -524,6 +572,50 @@ with st.sidebar:
         list(INDUSTRY_TEMPLATES.keys()),
         label_visibility="collapsed"
     )
+
+    st.divider()
+    st.write("**Filter Data**")
+    st.session_state.setdefault("active_filters", {})
+    # Filters are applied after the file is loaded — store selections in session state
+    # and apply them in the main body below the uploader
+    if st.session_state.get("file1") is not None or st.session_state.get("use_sample"):
+        _filter_changed = False
+        _filter_labels = []
+
+        # Date range filter
+        _date_col_key = st.session_state.get("_filter_date_col")
+        _date_min = st.session_state.get("_filter_date_min")
+        _date_max = st.session_state.get("_filter_date_max")
+        if _date_col_key and _date_min and _date_max:
+            _d0 = st.date_input("From", value=_date_min, min_value=_date_min,
+                                max_value=_date_max, key="filter_date_from")
+            _d1 = st.date_input("To", value=_date_max, min_value=_date_min,
+                                max_value=_date_max, key="filter_date_to")
+            st.session_state.active_filters["date"] = {
+                "col": _date_col_key, "from": _d0, "to": _d1
+            }
+            if _d0 != _date_min or _d1 != _date_max:
+                _filter_labels.append(
+                    f"{_date_col_key}: {_d0.strftime('%b %Y')} – {_d1.strftime('%b %Y')}"
+                )
+
+        # Categorical filters (top 3 priority cats)
+        for _fc in st.session_state.get("_filter_cat_cols", []):
+            _opts = st.session_state.get(f"_filter_opts_{_fc}", [])
+            if _opts:
+                _sel = st.multiselect(_fc, _opts, default=_opts,
+                                      key=f"filter_cat_{_fc}")
+                st.session_state.active_filters[_fc] = _sel
+                if set(_sel) != set(_opts):
+                    _filter_labels.append(f"{_fc}: {', '.join(_sel)}")
+
+        if _filter_labels:
+            st.caption("Active: " + " · ".join(_filter_labels))
+            if st.button("✕ Clear filters", use_container_width=True):
+                st.session_state.active_filters = {}
+                st.rerun()
+    else:
+        st.caption("Upload a file to enable filters.")
 
     st.divider()
     st.write("**How to Use**")
@@ -1207,6 +1299,46 @@ def build_df_info(df, label="Dataset"):
     except Exception:
         pass
 
+    # ── Statistical significance (t-tests between group pairs) ───────────────
+    significance_summary = ""
+    try:
+        from scipy import stats as _scipy_stats
+        _top_cat = useful_cats[0] if useful_cats else None
+        _top_num = numeric_cols[0] if numeric_cols else None
+        if _top_cat and _top_num:
+            _groups = {
+                k: v.dropna().values
+                for k, v in df.groupby(_top_cat)[_top_num]
+                if len(v.dropna()) >= 5
+            }
+            _group_names = list(_groups.keys())
+            if len(_group_names) >= 2:
+                significance_summary = (
+                    f"\nSTATISTICAL SIGNIFICANCE — pairwise t-tests for {_top_num} "
+                    f"by {_top_cat} (cite p-values when comparing groups):\n"
+                )
+                from itertools import combinations as _combs
+                for ga, gb in list(_combs(_group_names, 2))[:10]:
+                    try:
+                        _t, _p = _scipy_stats.ttest_ind(
+                            _groups[ga], _groups[gb], equal_var=False
+                        )
+                        _sig = ("***" if _p < 0.001 else
+                                "**"  if _p < 0.01  else
+                                "*"   if _p < 0.05  else
+                                "ns")
+                        significance_summary += (
+                            f"  {ga} vs {gb}: t={_t:.2f}, p={_p:.4f} {_sig}"
+                            f"  ({'significant' if _p < 0.05 else 'not significant'})\n"
+                        )
+                    except Exception:
+                        pass
+                significance_summary += (
+                    "  (* p<0.05, ** p<0.01, *** p<0.001, ns=not significant)\n"
+                )
+    except ImportError:
+        significance_summary = ""
+
     return f"""
 {label}:
 Columns: {', '.join(df.columns.tolist())}
@@ -1225,6 +1357,7 @@ Pre-calculated statistics (use these for accurate answers — do not guess):
 {binned_summary}
 {time_summaries}
 {shipping_summary}
+{significance_summary}
 Sample (first 5 rows):
 {df.head(5).to_string()}
 """
@@ -1362,12 +1495,29 @@ def get_advanced_questions(df):
     return message.content[0].text
 
 
-def get_answer(df, question, df2=None):
+def get_answer(df, question, df2=None, history=None):
     """Send question and data to Claude and return the answer."""
     df_info = build_df_info(df, "Dataset 1" if df2 is not None else "Dataset")
     if df2 is not None:
         df_info += build_df_info(df2, "Dataset 2")
         df_info += build_comparison_info(df, df2)
+
+    # Build conversation context from recent history
+    history_context = ""
+    if history:
+        recent = history[-3:]  # last 3 Q&A pairs
+        history_context = "\n\nPREVIOUS FINDINGS IN THIS SESSION (reference these where relevant):\n"
+        for i, item in enumerate(recent, 1):
+            prev_answer = item["answer"].split("---CHART---")[0].strip()[:500]
+            history_context += (
+                f"\nQ{i}: {item['question']}\n"
+                f"A{i} (summary): {prev_answer}{'...' if len(item['answer']) > 500 else ''}\n"
+            )
+        history_context += (
+            "\nWhen your current answer builds on or relates to a previous finding, "
+            "explicitly connect them (e.g. 'Building on our earlier finding that...' or "
+            "'This adds context to the Q2 result we saw above...')."
+        )
 
     message = client.messages.create(
         model="claude-haiku-4-5-20251001",
@@ -1377,7 +1527,7 @@ def get_answer(df, question, df2=None):
             "content": f"""You are a senior business data analyst with McKinsey-level expertise.
 Here is the data:
 
-{df_info}
+{df_info}{history_context}
 
 Question: {question}
 
@@ -1396,6 +1546,8 @@ Instructions:
    - Do NOT state things any manager already knows (e.g., "top performers perform well").
    - DO identify hidden risks, structural patterns, or strategic implications.
    - Think like a consultant advising the CEO: what decision does this number actually drive?
+8. Where statistical significance data is provided (p-values, t-stats), cite it when making
+   comparisons — e.g. "the difference is statistically significant (p=0.003)".
 
 If the answer involves comparing multiple items or showing a trend, end your response with this exact separator on its own line, then the JSON on the next line:
 ---CHART---
@@ -1404,6 +1556,8 @@ If the answer involves comparing multiple items or showing a trend, end your res
 Chart type rules:
 - Use "bar" for category comparisons (sales by region, top products, etc.)
 - Use "line" for time-series data (monthly trend, quarterly growth, year-over-year)
+- Use "scatter" for relationship/correlation questions (e.g. "sales vs profit", "X vs Y") — provide two value arrays:
+  {{"chart": {{"type": "scatter", "x": [1,2,3], "y": [4,5,6], "labels": ["A","B","C"], "x_label": "Sales", "y_label": "Profit", "title": "Sales vs Profit"}}}}
 Only include ---CHART--- if a chart would genuinely add value. Otherwise answer in plain text only."""
         }]
     )
@@ -1460,7 +1614,40 @@ def try_render_chart(answer_text):
             values = chart_data.get("values", [])
             title  = chart_data.get("title", "Chart")
             chart_type = chart_data.get("type", "bar")
-            if labels and values and len(labels) == len(values):
+
+            if chart_type == "scatter":
+                x_vals  = chart_data.get("x", [])
+                y_vals  = chart_data.get("y", [])
+                x_label = chart_data.get("x_label", "X")
+                y_label = chart_data.get("y_label", "Y")
+                pt_labels = chart_data.get("labels", [None] * len(x_vals))
+                if x_vals and y_vals and len(x_vals) == len(y_vals):
+                    scatter_df = pd.DataFrame({
+                        x_label: x_vals,
+                        y_label: y_vals,
+                        "Label": pt_labels if pt_labels else [""] * len(x_vals)
+                    })
+                    fig = px.scatter(
+                        scatter_df, x=x_label, y=y_label,
+                        text="Label" if pt_labels else None,
+                        title=title, trendline="ols",
+                        trendline_color_override="#d97706"
+                    )
+                    fig.update_traces(
+                        marker=dict(color="#f59e0b", size=8, opacity=0.8),
+                        textposition="top center", textfont=dict(size=10)
+                    )
+                    fig.update_layout(
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        font=dict(color="#1a1a2e", size=13),
+                        title_font=dict(color="#0d1b2a", size=15),
+                        xaxis=dict(gridcolor="#e8edf5", linecolor="#c5d5f5",
+                                   title=x_label),
+                        yaxis=dict(gridcolor="#e8edf5", linecolor="#c5d5f5",
+                                   title=y_label),
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+            elif labels and values and len(labels) == len(values):
                 chart_df = pd.DataFrame({"Label": labels, "Value": values})
                 if chart_type == "line":
                     fig = px.line(
@@ -1872,7 +2059,7 @@ def compute_insight_cards(df: pd.DataFrame, da: dict) -> list:
                         f"{top_pct:.0f}% of total"
                     ),
                     "color": "#f59e0b",
-                    "bg": "#fffbf0",
+                    "bg": "#ffffff",
                 })
 
     # ── Card 2: Trend Signal ──────────────────────────────────────────────────
@@ -1946,7 +2133,7 @@ def compute_insight_cards(df: pd.DataFrame, da: dict) -> list:
             "headline": f"{top_drv_name} drives {tgt_name}",
             "detail": drv_detail,
             "color": "#d97706",
-            "bg": "#fef3c7",
+            "bg": "#ffffff",
         })
 
     # ── Card 5: Dataset Scale ─────────────────────────────────────────────────
@@ -2072,6 +2259,21 @@ def generate_report_html(filename, summary, history, filename2=None):
 </html>"""
 
 
+def _metric_html(label, value):
+    """Render a metric card with guaranteed dark text (avoids Streamlit's native st.metric color issues)."""
+    st.markdown(f"""
+    <div style="background:#ffffff;border:1px solid #fcd34d;border-radius:14px;
+                padding:1.1rem 1.2rem 1rem 1.2rem;
+                box-shadow:0 4px 14px rgba(245,158,11,0.09),0 1px 3px rgba(0,0,0,0.05);
+                border-top:3px solid #f59e0b;">
+        <div style="font-size:0.66rem;font-weight:700;color:#4a4a4a;text-transform:uppercase;
+                    letter-spacing:0.1em;margin-bottom:0.35rem;">{label}</div>
+        <div style="font-size:1.6rem;font-weight:900;color:#1c1c1e;letter-spacing:-0.02em;
+                    line-height:1.1;">{value}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 # ── File upload ────────────────────────────────────────────────────────────────
 col1, col2 = st.columns(2)
 with col1:
@@ -2162,6 +2364,60 @@ if uploaded_file is not None or using_sample:
 
         effective_name = uploaded_file.name
 
+    # ── Populate sidebar filter options (once per file load) ──────────────────
+    _filters_were_ready = "_filter_cat_cols" in st.session_state
+    _filter_date_keywords = ["date", "time", "month", "year", "period"]
+    _detected_date_col = next(
+        (c for c in df.columns if any(kw in c.lower() for kw in _filter_date_keywords)),
+        None
+    )
+    if _detected_date_col:
+        try:
+            _parsed_dates = pd.to_datetime(df[_detected_date_col], errors="coerce").dropna()
+            if len(_parsed_dates) > 0:
+                st.session_state["_filter_date_col"] = _detected_date_col
+                st.session_state["_filter_date_min"] = _parsed_dates.min().date()
+                st.session_state["_filter_date_max"] = _parsed_dates.max().date()
+        except Exception:
+            pass
+
+    _priority_cats = ["category", "segment", "region", "sub-category", "subcategory",
+                      "channel", "department", "brand", "division"]
+    _filter_cat_cols = []
+    for _pname in _priority_cats:
+        _match = next((c for c in df.columns if c.lower() == _pname), None)
+        if _match and df[_match].nunique() <= 20:
+            _filter_cat_cols.append(_match)
+            st.session_state[f"_filter_opts_{_match}"] = sorted(df[_match].dropna().unique().tolist())
+    st.session_state["_filter_cat_cols"] = _filter_cat_cols[:3]
+    # Force sidebar to re-render with filter widgets on first file load
+    if not _filters_were_ready:
+        st.rerun()
+
+    # ── Apply active filters to df ────────────────────────────────────────────
+    _active = st.session_state.get("active_filters", {})
+    _filter_desc = []
+    if _active.get("date"):
+        _fd = _active["date"]
+        try:
+            _dc = pd.to_datetime(df[_fd["col"]], errors="coerce")
+            _mask = (_dc.dt.date >= _fd["from"]) & (_dc.dt.date <= _fd["to"])
+            df = df[_mask].reset_index(drop=True)
+            _filter_desc.append(
+                f"{_fd['col']}: {_fd['from'].strftime('%b %Y')} – {_fd['to'].strftime('%b %Y')}"
+            )
+        except Exception:
+            pass
+    for _fc, _sel in _active.items():
+        if _fc == "date" or not isinstance(_sel, list):
+            continue
+        if _fc in df.columns and _sel:
+            df = df[df[_fc].isin(_sel)].reset_index(drop=True)
+            _filter_desc.append(f"{_fc}: {', '.join(str(s) for s in _sel)}")
+
+    if _filter_desc:
+        st.info(f"🔍 **Filtered view** — {' · '.join(_filter_desc)} · {len(df):,} rows", icon=None)
+
     if using_sample:
         st.info(
             "📊 **You're exploring the sample dataset** — a synthetic 500-row retail sales "
@@ -2185,29 +2441,29 @@ if uploaded_file is not None or using_sample:
                 f"and **{uploaded_file2.name}** ({len(df2):,} rows)"
             )
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("File 1 Rows", f"{len(df):,}")
-            m2.metric("File 2 Rows", f"{len(df2):,}")
-            m3.metric("File 1 Columns", len(df.columns))
-            m4.metric("File 2 Columns", len(df2.columns))
+            with m1: _metric_html("File 1 Rows", f"{len(df):,}")
+            with m2: _metric_html("File 2 Rows", f"{len(df2):,}")
+            with m3: _metric_html("File 1 Columns", len(df.columns))
+            with m4: _metric_html("File 2 Columns", len(df2.columns))
         else:
             st.success(f"✅ **{effective_name}** loaded successfully")
             date_range = get_date_range(df)
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Rows", f"{len(df):,}")
-            m2.metric("Columns", len(df.columns))
             num_cols = len([c for c in df.select_dtypes(include="number").columns
                             if not any(kw in c.lower() for kw in SKIP_NUM_COLS)])
-            m3.metric("Numeric Columns", num_cols)
-            m4.metric("Date Range", date_range if date_range else "N/A")
+            with m1: _metric_html("Rows", f"{len(df):,}")
+            with m2: _metric_html("Columns", len(df.columns))
+            with m3: _metric_html("Numeric Columns", num_cols)
+            with m4: _metric_html("Date Range", date_range if date_range else "N/A")
     else:
         date_range = get_date_range(df)
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Rows", f"{len(df):,}")
-        m2.metric("Columns", len(df.columns))
         num_cols = len([c for c in df.select_dtypes(include="number").columns
                         if not any(kw in c.lower() for kw in SKIP_NUM_COLS)])
-        m3.metric("Numeric Columns", num_cols)
-        m4.metric("Date Range", date_range if date_range else "N/A")
+        with m1: _metric_html("Rows", f"{len(df):,}")
+        with m2: _metric_html("Columns", len(df.columns))
+        with m3: _metric_html("Numeric Columns", num_cols)
+        with m4: _metric_html("Date Range", date_range if date_range else "N/A")
 
     # Data quality alerts
     alerts = check_data_quality(df)
@@ -2889,7 +3145,8 @@ if uploaded_file is not None or using_sample:
                 try:
                     st.session_state.last_request_time = datetime.now()
                     st.session_state.request_count += 1
-                    raw_answer = get_answer(df, question, df2)
+                    raw_answer = get_answer(df, question, df2,
+                                            history=st.session_state.get("history", []))
                     clean_answer, chart_data = try_render_chart(raw_answer)
                     _encoded = base64.b64encode(clean_answer.encode()).decode()
                     st.markdown("""
