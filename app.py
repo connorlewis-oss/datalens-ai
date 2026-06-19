@@ -792,20 +792,69 @@ def build_df_info(df, label="Dataset"):
     if len(useful_cats) >= 2 and numeric_cols:
         from itertools import combinations
         cat_pairs = list(combinations(useful_cats, 2))[:12]  # cap at 12 pairs
+
+        # Sum and avg for numeric cols
         for num_col in numeric_cols[:3]:
             for cat_a, cat_b in cat_pairs:
                 try:
+                    for aggfn, label in [("sum", "Total"), ("mean", "Avg")]:
+                        pivot = df.pivot_table(
+                            values=num_col,
+                            index=cat_a,
+                            columns=cat_b,
+                            aggfunc=aggfn,
+                            fill_value=0
+                        ).round(2)
+                        if pivot.shape[0] <= 20 and pivot.shape[1] <= 15:
+                            cross_summaries += (
+                                f"\n{label} {num_col} by {cat_a} × {cat_b}:\n"
+                                f"{pivot.to_string()}\n"
+                            )
+                except Exception:
+                    pass
+
+        # Customer/entity count by cat pairs
+        _id_cols = [c for c in df.columns
+                    if any(kw in c.lower() for kw in
+                           ["customer", "client", "user", "employee", "id"])
+                    and df[c].nunique() > 1]
+        for id_col in _id_cols[:2]:
+            for cat_a, cat_b in cat_pairs:
+                try:
                     pivot = df.pivot_table(
-                        values=num_col,
+                        values=id_col,
                         index=cat_a,
                         columns=cat_b,
-                        aggfunc="mean",
+                        aggfunc="nunique",
                         fill_value=0
-                    ).round(2)
+                    )
                     if pivot.shape[0] <= 20 and pivot.shape[1] <= 15:
                         cross_summaries += (
-                            f"\nAvg {num_col} by {cat_a} × {cat_b}:\n"
+                            f"\nUnique {id_col} count by {cat_a} × {cat_b}:\n"
                             f"{pivot.to_string()}\n"
+                        )
+                except Exception:
+                    pass
+
+        # Sales-per-customer by cat pairs (where both id col and sales col exist)
+        _sales_col = next((c for c in numeric_cols
+                           if any(kw in c.lower() for kw in
+                                  ["sale", "revenue", "amount", "total"])), None)
+        if _id_cols and _sales_col:
+            for cat_a, cat_b in cat_pairs:
+                try:
+                    grp = df.groupby([cat_a, cat_b]).agg(
+                        Total_Sales=(_sales_col, "sum"),
+                        Unique_Customers=(_id_cols[0], "nunique")
+                    )
+                    grp["Sales_per_Customer"] = (
+                        grp["Total_Sales"] / grp["Unique_Customers"]
+                    ).round(2)
+                    if len(grp) <= 200:
+                        cross_summaries += (
+                            f"\n{_sales_col} per unique {_id_cols[0]} "
+                            f"by {cat_a} × {cat_b}:\n"
+                            f"{grp.to_string()}\n"
                         )
                 except Exception:
                     pass
