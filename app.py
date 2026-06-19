@@ -526,21 +526,14 @@ with st.sidebar:
     )
 
     st.divider()
-    st.write("**Analysis Mode**")
-    mode = st.radio(
-        "Mode:",
-        ["Single File", "Compare Two Files"],
-        label_visibility="collapsed"
-    )
-
-    st.divider()
     st.write("**How to Use**")
     st.write("""
-    1. Select your industry template
-    2. Upload your data file(s)
-    3. Review the auto-generated summary
-    4. Click a suggested question or type your own
-    5. Download your report when done
+    1. Upload your data file (Primary Dataset)
+    2. Optionally add a second file to compare
+    3. Select an industry template if relevant
+    4. Review the auto-generated summary
+    5. Click a suggested question or type your own
+    6. Download your report when done
     """)
     st.divider()
     st.caption("🔒 Your data is sent to the Anthropic API for analysis and is not stored or used for model training.")
@@ -2031,25 +2024,18 @@ def generate_report_html(filename, summary, history, filename2=None):
 
 
 # ── File upload ────────────────────────────────────────────────────────────────
-if mode == "Single File":
+col1, col2 = st.columns(2)
+with col1:
+    st.write("**Primary Dataset**")
     uploaded_file = st.file_uploader(
-        "Upload a CSV or Excel file to get started",
-        type=["csv", "xlsx", "xls"]
+        "Upload a CSV or Excel file", type=["csv", "xlsx", "xls"], key="file1"
     )
-    uploaded_file2 = None
-else:
-    st.write("Upload two files to compare them — for example, this year vs last year.")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("**File 1**")
-        uploaded_file = st.file_uploader(
-            "Upload first file", type=["csv", "xlsx", "xls"], key="file1"
-        )
-    with col2:
-        st.write("**File 2**")
-        uploaded_file2 = st.file_uploader(
-            "Upload second file", type=["csv", "xlsx", "xls"], key="file2"
-        )
+with col2:
+    st.write("**Compare Dataset** *(optional)*")
+    uploaded_file2 = st.file_uploader(
+        "Upload a second file to compare", type=["csv", "xlsx", "xls"], key="file2"
+    )
+mode = "Compare Two Files" if uploaded_file2 is not None else "Single File"
 
 # ── Landing state (no file uploaded yet) ──────────────────────────────────────
 if uploaded_file is None and not st.session_state.use_sample:
