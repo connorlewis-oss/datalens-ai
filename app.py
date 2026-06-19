@@ -1513,7 +1513,8 @@ def _md_to_html(text: str) -> str:
             _li_text = re.sub(r'^\d+\. ', '', line)
             out.append(f'<li style="color:#1a1a2e;margin-bottom:0.25rem;">{_li_text}</li>')
         elif line.strip() == '':
-            close_lists()
+            # Don't close lists on blank lines — numbered items often have blank lines between them
+            # Lists are closed when a non-list line is encountered or at end of text
             out.append('<div style="margin:0.4rem 0;"></div>')
         else:
             close_lists()
