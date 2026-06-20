@@ -3826,8 +3826,13 @@ if uploaded_file is not None or using_sample:
                     f'margin-left:0.5rem;vertical-align:middle;">'
                     f'{_titem["confidence"]}</span>'
                 )
-            _ta_preview = fix_dollar_signs(_titem["answer"])[:280]
-            if len(_titem["answer"]) > 280:
+            # Strip markdown before truncating so we never cut mid-tag
+            _ta_raw = re.sub(r"\*\*(.+?)\*\*", r"\1", _titem["answer"])
+            _ta_raw = re.sub(r"\*(.+?)\*", r"\1", _ta_raw)
+            _ta_raw = re.sub(r"#+\s*", "", _ta_raw)
+            _ta_raw = re.sub(r"\n+", " ", _ta_raw).strip()
+            _ta_preview = fix_dollar_signs(_ta_raw[:280])
+            if len(_ta_raw) > 280:
                 _ta_preview += "…"
             st.markdown(f"""
             <div class="history-item">
