@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import os
 import base64
+import io
 import anthropic
 import plotly.express as px
 import plotly.graph_objects as go
@@ -12,11 +13,19 @@ import re
 import html as html_lib
 from datetime import datetime
 from dotenv import load_dotenv
+try:
+    from fpdf import FPDF
+    _FPDF_AVAILABLE = True
+except ImportError:
+    _FPDF_AVAILABLE = False
 
 load_dotenv()
 
 # ── API key (check happens after set_page_config below) ───────────────────────
 _api_key = os.getenv("ANTHROPIC_API_KEY")
+
+# ── Model ─────────────────────────────────────────────────────────────────────
+MODEL = "claude-haiku-4-5-20251001"
 
 # ── Rate limiting config ───────────────────────────────────────────────────────
 MAX_REQUESTS_PER_SESSION = 100  # max AI calls per browser session
@@ -616,6 +625,18 @@ with st.sidebar:
                 st.rerun()
     else:
         st.caption("Upload a file to enable filters.")
+
+    # ── Recent questions ──────────────────────────────────────────────────────
+    _sidebar_hist = st.session_state.get("history", [])
+    if _sidebar_hist:
+        st.divider()
+        st.write("**Recent Questions**")
+        for _shi, _sh in enumerate(reversed(_sidebar_hist[-5:])):
+            _sq = _sh["question"]
+            _sq_short = _sq[:48] + "…" if len(_sq) > 48 else _sq
+            if st.button(_sq_short, key=f"sidebar_hist_{_shi}", use_container_width=True):
+                st.session_state.question_input = _sq
+                st.rerun()
 
     st.divider()
     st.write("**How to Use**")
@@ -1433,7 +1454,7 @@ def get_summary(df, prompt, df2=None):
         df_info += build_df_info(df2, "Dataset 2")
         df_info += build_comparison_info(df, df2)
     message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=MODEL,
         max_tokens=512,
         messages=[{
             "role": "user",
@@ -1446,7 +1467,7 @@ def get_summary(df, prompt, df2=None):
 def get_suggested_questions(columns):
     """Generate 6 suggested questions using only column names — no data context needed."""
     message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=MODEL,
         max_tokens=256,
         messages=[{
             "role": "user",
@@ -1474,7 +1495,7 @@ def get_advanced_questions(df):
         col_info.append(f"  {col} ({dtype}, {n_unique:,} unique values)")
 
     message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=MODEL,
         max_tokens=400,
         messages=[{
             "role": "user",
@@ -1495,7 +1516,7 @@ def get_advanced_questions(df):
     return message.content[0].text
 
 
-def get_answer(df, question, df2=None, history=None):
+def get_answer(df, question, df2=None, history=None, force_chart=False):
     """Send question and data to Claude and return the answer."""
     df_info = build_df_info(df, "Dataset 1" if df2 is not None else "Dataset")
     if df2 is not None:
@@ -1520,7 +1541,7 @@ def get_answer(df, question, df2=None, history=None):
         )
 
     message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=MODEL,
         max_tokens=4096,
         messages=[{
             "role": "user",
@@ -1558,7 +1579,8 @@ Chart type rules:
 - Use "line" for time-series data (monthly trend, quarterly growth, year-over-year)
 - Use "scatter" for relationship/correlation questions (e.g. "sales vs profit", "X vs Y") — provide two value arrays:
   {{"chart": {{"type": "scatter", "x": [1,2,3], "y": [4,5,6], "labels": ["A","B","C"], "x_label": "Sales", "y_label": "Profit", "title": "Sales vs Profit"}}}}
-Only include ---CHART--- if a chart would genuinely add value. Otherwise answer in plain text only."""
+Only include ---CHART--- if a chart would genuinely add value. Otherwise answer in plain text only.
+{"IMPORTANT: The user explicitly requested a chart or visualization. You MUST include a ---CHART--- section with appropriate data." if force_chart else ""}"""
         }]
     )
     return message.content[0].text
@@ -2259,6 +2281,187 @@ def generate_report_html(filename, summary, history, filename2=None):
 </html>"""
 
 
+# ── Confidence indicator ──────────────────────────────────────────────────────
+def compute_confidence(answer: str):
+    """Return (level, color, tooltip) based on hedging language in the answer."""
+    hedging = ["approximately", "roughly", "estimated", "about ", "around ",
+               "likely", "probably", "suggest", "seem", "appear",
+               "cannot determine", "not enough", "unclear", "may be", "might"]
+    hedge_count = sum(1 for w in hedging if w in answer.lower())
+    if hedge_count == 0:
+        return "HIGH", "#16a34a", "Answer is grounded directly in your data"
+    elif hedge_count <= 2:
+        return "MEDIUM", "#d97706", "Answer contains some estimation"
+    else:
+        return "LOW", "#dc2626", "Answer involves significant estimation"
+
+
+# ── Follow-up question generator ──────────────────────────────────────────────
+def get_followup_questions(question: str, answer: str, client, model: str) -> list:
+    """Generate 3 short follow-up questions based on the Q&A."""
+    try:
+        msg = client.messages.create(
+            model=model,
+            max_tokens=200,
+            messages=[{"role": "user", "content":
+                f"""Based on this data analysis Q&A, suggest exactly 3 short follow-up questions.
+Write one question per line, no numbering or bullets — just the question text.
+
+Q: {question}
+A (summary): {answer[:350]}
+
+3 follow-up questions:"""}]
+        )
+        lines = [l.strip() for l in msg.content[0].text.strip().split("\n")
+                 if l.strip() and len(l.strip()) > 5]
+        return lines[:3]
+    except Exception:
+        return []
+
+
+# ── PDF report generator ──────────────────────────────────────────────────────
+def _pdf_safe(text: str) -> str:
+    """Replace characters unsupported by Helvetica with ASCII equivalents."""
+    return (text
+        .replace("—", "-")   # em dash
+        .replace("–", "-")   # en dash
+        .replace("‘", "'")   # left single quote
+        .replace("’", "'")   # right single quote
+        .replace("“", '"')   # left double quote
+        .replace("”", '"')   # right double quote
+        .replace("•", "*")   # bullet
+        .replace("…", "...")  # ellipsis
+        .encode("latin-1", errors="replace").decode("latin-1")
+    )
+
+
+def generate_pdf_report(filename: str, summary: str, history: list) -> bytes:
+    """Generate a clean PDF report using fpdf2. Returns bytes."""
+    if not _FPDF_AVAILABLE:
+        return b""
+
+    pdf = FPDF()
+    pdf.set_margins(15, 15, 15)
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    W = pdf.epw  # effective page width, always valid
+
+    # Header
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.set_text_color(28, 28, 30)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(W, 12, "ARIA - Analysis Report")
+    pdf.ln(1)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(100, 100, 100)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(W, 6, _pdf_safe(
+        f"Dataset: {filename}   |   Generated: {datetime.now().strftime('%B %d, %Y %H:%M')}"
+    ))
+
+    # Divider
+    pdf.set_draw_color(245, 158, 11)
+    pdf.set_line_width(0.8)
+    pdf.line(pdf.l_margin, pdf.get_y() + 2, pdf.w - pdf.r_margin, pdf.get_y() + 2)
+    pdf.ln(6)
+
+    def _write_section(title, body):
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.set_text_color(28, 28, 30)
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(W, 8, _pdf_safe(title))
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(50, 50, 50)
+        # Strip markdown-ish formatting and write
+        clean = re.sub(r"\*\*(.+?)\*\*", r"\1", body)
+        clean = re.sub(r"\*(.+?)\*", r"\1", clean)
+        clean = re.sub(r"#+\s*", "", clean)
+        for para in clean.split("\n"):
+            para = _pdf_safe(para.strip())
+            if para:
+                pdf.set_x(pdf.l_margin)
+                pdf.multi_cell(W, 6, para)
+        pdf.ln(3)
+
+    # Executive summary
+    if summary:
+        _write_section("Executive Summary", summary)
+
+    # Q&A history
+    if history:
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.set_text_color(28, 28, 30)
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(W, 8, "Analysis Q&A")
+        pdf.ln(2)
+        for i, item in enumerate(history, 1):
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.set_text_color(180, 100, 0)
+            pdf.set_x(pdf.l_margin)
+            pdf.multi_cell(W, 6, _pdf_safe(f"Q{i}: {item['question']}"))
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_text_color(50, 50, 50)
+            answer_clean = re.sub(r"\*\*(.+?)\*\*", r"\1", item["answer"])
+            answer_clean = re.sub(r"\*(.+?)\*", r"\1", answer_clean)
+            answer_clean = re.sub(r"#+\s*", "", answer_clean)
+            for para in answer_clean.split("\n"):
+                para = _pdf_safe(para.strip())
+                if para:
+                    pdf.set_x(pdf.l_margin)
+                    pdf.multi_cell(W, 5, para)
+            pdf.ln(4)
+
+    # Footer
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(150, 150, 150)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(W, 6, "Generated by ARIA - AI Research & Insight Analyst | Built by Connor Lewis")
+
+    return bytes(pdf.output())
+
+
+# ── Cleaning suggestions ──────────────────────────────────────────────────────
+def get_cleaning_suggestions(df: pd.DataFrame) -> list:
+    """Return list of {col, issue, fix, action, value} dicts."""
+    suggestions = []
+    for col in df.columns:
+        missing = df[col].isnull().sum()
+        if missing > 0:
+            pct = missing / len(df) * 100
+            if pd.api.types.is_numeric_dtype(df[col]):
+                med = df[col].median()
+                suggestions.append({
+                    "col": col,
+                    "issue": f"**{col}** — {missing:,} missing values ({pct:.1f}%)",
+                    "fix": f"Fill with median ({med:,.2f})",
+                    "action": "fill_median", "value": med
+                })
+            else:
+                suggestions.append({
+                    "col": col,
+                    "issue": f"**{col}** — {missing:,} missing values ({pct:.1f}%)",
+                    "fix": "Fill with 'Unknown'",
+                    "action": "fill_unknown", "value": "Unknown"
+                })
+        # Numbers stored as text
+        if df[col].dtype == object:
+            _sample = df[col].dropna().head(50)
+            if len(_sample) > 0:
+                try:
+                    pd.to_numeric(_sample)
+                    suggestions.append({
+                        "col": col,
+                        "issue": f"**{col}** — looks like numbers stored as text",
+                        "fix": "Convert to numeric",
+                        "action": "to_numeric", "value": None
+                    })
+                except (ValueError, TypeError):
+                    pass
+    return suggestions
+
+
 def _metric_html(label, value):
     """Render a metric card with guaranteed dark text (avoids Streamlit's native st.metric color issues)."""
     st.markdown(f"""
@@ -2483,6 +2686,26 @@ if uploaded_file is not None or using_sample:
         ):
             for alert in labeled_alerts:
                 st.warning(alert)
+            # Cleaning suggestions (single file only)
+            if df2 is None:
+                _suggestions = get_cleaning_suggestions(df)
+                if _suggestions:
+                    st.markdown("**💡 Suggested fixes:**")
+                    for _sg in _suggestions:
+                        _sg_c1, _sg_c2 = st.columns([3, 1])
+                        with _sg_c1:
+                            st.markdown(f"- {_sg['issue']} → _{_sg['fix']}_")
+                        with _sg_c2:
+                            if st.button("Apply", key=f"fix_{_sg['col']}_{_sg['action']}",
+                                         use_container_width=True):
+                                if _sg["action"] == "fill_median":
+                                    df[_sg["col"]] = df[_sg["col"]].fillna(_sg["value"])
+                                elif _sg["action"] == "fill_unknown":
+                                    df[_sg["col"]] = df[_sg["col"]].fillna(_sg["value"])
+                                elif _sg["action"] == "to_numeric":
+                                    df[_sg["col"]] = pd.to_numeric(df[_sg["col"]], errors="coerce")
+                                st.success(f"Applied: {_sg['fix']} to {_sg['col']}")
+                                st.rerun()
 
     # Data preview
     if df2 is not None:
@@ -2497,6 +2720,49 @@ if uploaded_file is not None or using_sample:
     else:
         st.write("### Preview of Your Data")
         st.dataframe(df.head(20), use_container_width=True)
+
+    # ── Column Profiler ───────────────────────────────────────────────────────
+    with st.expander("🔍 Column Profiler — click any column to explore its distribution", expanded=False):
+        _prof_col = st.selectbox("Select a column:", df.columns.tolist(), key="profile_col")
+        if _prof_col:
+            _col_s = df[_prof_col]
+            _n_miss = _col_s.isnull().sum()
+            _n_uniq = _col_s.nunique()
+            _pc1, _pc2, _pc3, _pc4 = st.columns(4)
+            with _pc1: _metric_html("Type", str(_col_s.dtype))
+            with _pc2: _metric_html("Missing", f"{_n_miss:,} ({_n_miss/max(len(df),1)*100:.1f}%)")
+            with _pc3: _metric_html("Unique Values", f"{_n_uniq:,}")
+
+            if pd.api.types.is_numeric_dtype(_col_s):
+                _clean_s = _col_s.dropna()
+                with _pc4: _metric_html("Mean", f"{_clean_s.mean():,.2f}")
+                _ps1, _ps2, _ps3, _ps4 = st.columns(4)
+                with _ps1: _metric_html("Min", f"{_clean_s.min():,.2f}")
+                with _ps2: _metric_html("Median", f"{_clean_s.median():,.2f}")
+                with _ps3: _metric_html("Max", f"{_clean_s.max():,.2f}")
+                with _ps4: _metric_html("Std Dev", f"{_clean_s.std():,.2f}")
+                _pfig = px.histogram(_clean_s.to_frame(), x=_prof_col, nbins=30,
+                                     title=f"Distribution of {_prof_col}",
+                                     color_discrete_sequence=["#f59e0b"])
+                _pfig.update_layout(plot_bgcolor="white", paper_bgcolor="white",
+                                    margin=dict(l=10,r=10,t=36,b=10), height=220,
+                                    showlegend=False)
+                _pfig.update_xaxes(color="#1c1c1e")
+                _pfig.update_yaxes(color="#1c1c1e", title="Count")
+                st.plotly_chart(_pfig, use_container_width=True)
+            else:
+                _vc = _col_s.value_counts().head(10)
+                with _pc4: _metric_html("Top Value", str(_vc.index[0]) if len(_vc) > 0 else "N/A")
+                _pfig = px.bar(x=_vc.index.astype(str), y=_vc.values,
+                               title=f"Top values in {_prof_col}",
+                               color_discrete_sequence=["#f59e0b"],
+                               labels={"x": _prof_col, "y": "Count"})
+                _pfig.update_layout(plot_bgcolor="white", paper_bgcolor="white",
+                                    margin=dict(l=10,r=10,t=36,b=10), height=220,
+                                    showlegend=False)
+                _pfig.update_xaxes(color="#1c1c1e")
+                _pfig.update_yaxes(color="#1c1c1e")
+                st.plotly_chart(_pfig, use_container_width=True)
 
     # Stable file identifier — set above in sample/upload branches
     if not using_sample:
@@ -3141,18 +3407,35 @@ if uploaded_file is not None or using_sample:
                 f"Please wait {int(COOLDOWN_SECONDS - elapsed) + 1} second(s) before submitting again."
             )
         else:
+            # Detect explicit chart request (#16 — natural language chart builder)
+            _chart_kws = ["chart", "plot", "graph", "visualiz", "bar chart", "line chart",
+                          "scatter", "histogram", "show me a bar", "draw a", "display a"]
+            _wants_chart = any(kw in question.lower() for kw in _chart_kws)
+
             with st.spinner("Analyzing your data..."):
                 try:
                     st.session_state.last_request_time = datetime.now()
                     st.session_state.request_count += 1
                     raw_answer = get_answer(df, question, df2,
-                                            history=st.session_state.get("history", []))
+                                            history=st.session_state.get("history", []),
+                                            force_chart=_wants_chart)
                     clean_answer, chart_data = try_render_chart(raw_answer)
+
+                    # Confidence indicator (#19)
+                    _conf_level, _conf_color, _conf_tip = compute_confidence(clean_answer)
+
                     _encoded = base64.b64encode(clean_answer.encode()).decode()
-                    st.markdown("""
+                    st.markdown(f"""
                     <div class="section-header" style="margin-top:1.2rem;">
                         <div class="section-header-icon">📊</div>
                         <div class="section-header-text">Analysis</div>
+                        <span style="margin-left:auto;font-size:0.65rem;font-weight:700;
+                                     text-transform:uppercase;letter-spacing:0.08em;
+                                     color:{_conf_color};border:1.5px solid {_conf_color};
+                                     border-radius:20px;padding:2px 9px;"
+                              title="{_conf_tip}">
+                            {_conf_level} CONFIDENCE
+                        </span>
                     </div>
                     """, unsafe_allow_html=True)
                     _answer_html = _md_to_html(fix_dollar_signs(clean_answer))
@@ -3178,54 +3461,101 @@ if uploaded_file is not None or using_sample:
                         </button>""",
                         height=36,
                     )
+
+                    # Follow-up questions (#20)
+                    with st.spinner("Generating follow-up questions..."):
+                        _followups = get_followup_questions(
+                            question, clean_answer, client, MODEL
+                        )
+                    if _followups:
+                        st.markdown(
+                            '<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;'
+                            'letter-spacing:0.1em;color:#7a7a7a;margin:0.8rem 0 0.4rem 0;">'
+                            '💬 Follow-up questions</div>',
+                            unsafe_allow_html=True
+                        )
+                        _fq_cols = st.columns(len(_followups))
+                        for _fqi, _fq in enumerate(_followups):
+                            if _fq_cols[_fqi].button(_fq, key=f"followup_{_fqi}_{len(st.session_state.history)}"):
+                                st.session_state.question_input = _fq
+                                st.rerun()
+
                     st.session_state.history.append({
                         "question": question,
-                        "answer": clean_answer,       # unescaped — used in HTML report
-                        "chart_data": chart_data      # None if no chart
+                        "answer": clean_answer,
+                        "chart_data": chart_data,
+                        "confidence": _conf_level
                     })
                 except Exception as e:
-                    st.session_state.request_count -= 1  # don't count failed requests
+                    st.session_state.request_count -= 1
                     st.warning("I couldn't answer that. Try rephrasing your question.")
                     st.caption(f"Technical detail: {str(e)}")
 
-    # Conversation history — exclude the most recent item (already shown above)
-    _past_history = st.session_state.history[:-1]
+    # ── Multi-turn conversation thread (#21) ─────────────────────────────────
+    _all_history = st.session_state.history
+    _past_history = _all_history[:-1]  # everything except the just-answered item
     if _past_history:
         st.markdown("""
         <div class="section-header">
             <div class="section-header-icon">🕐</div>
-            <div class="section-header-text">Previous Questions</div>
+            <div class="section-header-text">Conversation Thread</div>
         </div>
         """, unsafe_allow_html=True)
-        for item in reversed(_past_history[-5:]):
-            _a_preview = fix_dollar_signs(item["answer"])[:320]
-            if len(item["answer"]) > 320:
-                _a_preview += "…"
+        for _ti, _titem in enumerate(reversed(_past_history)):
+            _conf_badge = ""
+            if _titem.get("confidence"):
+                _cc = {"HIGH": "#16a34a", "MEDIUM": "#d97706", "LOW": "#dc2626"}.get(
+                    _titem["confidence"], "#7a7a7a")
+                _conf_badge = (
+                    f'<span style="font-size:0.6rem;font-weight:700;color:{_cc};'
+                    f'border:1px solid {_cc};border-radius:10px;padding:1px 6px;'
+                    f'margin-left:0.5rem;vertical-align:middle;">'
+                    f'{_titem["confidence"]}</span>'
+                )
+            _ta_preview = fix_dollar_signs(_titem["answer"])[:280]
+            if len(_titem["answer"]) > 280:
+                _ta_preview += "…"
             st.markdown(f"""
             <div class="history-item">
                 <div class="history-q">
                     <span style="color:#f59e0b;margin-top:1px;">▸</span>
-                    {item['question']}
+                    {_titem['question']}{_conf_badge}
                 </div>
-                <div class="history-a">{_a_preview}</div>
+                <div class="history-a">{_ta_preview}</div>
             </div>
             """, unsafe_allow_html=True)
 
-        # Download report
+    # ── Download buttons (#15 PDF + HTML) ────────────────────────────────────
+    if _all_history:
         st.divider()
         report_html = generate_report_html(
             effective_name,
             st.session_state.get("summary", ""),
-            st.session_state.history,
+            _all_history,
             filename2=uploaded_file2.name if uploaded_file2 is not None else None
         )
-        st.download_button(
-            label="📥 Download Analysis Report",
-            data=report_html,
-            file_name=f"analysis_report_{datetime.now().strftime('%Y%m%d_%H%M')}.html",
-            mime="text/html"
-        )
-        st.caption(
-            "Tip: Open the downloaded file in any browser — charts are included. "
-            "To save as PDF, press Cmd+P (Mac) or Ctrl+P (Windows) and choose 'Save as PDF'."
-        )
+        _dl_col1, _dl_col2 = st.columns(2)
+        with _dl_col1:
+            st.download_button(
+                label="📥 Download HTML Report",
+                data=report_html,
+                file_name=f"aria_report_{datetime.now().strftime('%Y%m%d_%H%M')}.html",
+                mime="text/html",
+                use_container_width=True
+            )
+        with _dl_col2:
+            if _FPDF_AVAILABLE:
+                _pdf_bytes = generate_pdf_report(
+                    effective_name,
+                    st.session_state.get("summary", ""),
+                    _all_history
+                )
+                st.download_button(
+                    label="📄 Download PDF Report",
+                    data=_pdf_bytes,
+                    file_name=f"aria_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+            else:
+                st.caption("Install `fpdf2` to enable PDF export.")
