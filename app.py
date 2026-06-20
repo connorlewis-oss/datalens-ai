@@ -1620,84 +1620,84 @@ def check_data_quality(df):
 
 
 def try_render_chart(answer_text):
-    """Extract chart JSON from the answer (after ---CHART--- separator) and render it.
-    Returns (clean_text, chart_data) — chart_data is None if no chart was found."""
+    """Parse chart JSON from answer text. Returns (clean_text, chart_data).
+    Does NOT render — call render_chart_data() separately."""
     if "---CHART---" in answer_text:
         parts = answer_text.split("---CHART---", 1)
         clean_text = parts[0].strip()
         json_block = parts[1].strip()
-        # Strip any code fences around the JSON
         json_block = re.sub(r'^```(?:json)?\s*', '', json_block).strip()
         json_block = re.sub(r'\s*```$', '', json_block).strip()
-        chart_data = None
         try:
             chart_data = json.loads(json_block)["chart"]
-            labels = chart_data.get("labels", [])
-            values = chart_data.get("values", [])
-            title  = chart_data.get("title", "Chart")
-            chart_type = chart_data.get("type", "bar")
-
-            if chart_type == "scatter":
-                x_vals  = chart_data.get("x", [])
-                y_vals  = chart_data.get("y", [])
-                x_label = chart_data.get("x_label", "X")
-                y_label = chart_data.get("y_label", "Y")
-                pt_labels = chart_data.get("labels", [None] * len(x_vals))
-                if x_vals and y_vals and len(x_vals) == len(y_vals):
-                    scatter_df = pd.DataFrame({
-                        x_label: x_vals,
-                        y_label: y_vals,
-                        "Label": pt_labels if pt_labels else [""] * len(x_vals)
-                    })
-                    fig = px.scatter(
-                        scatter_df, x=x_label, y=y_label,
-                        text="Label" if pt_labels else None,
-                        title=title, trendline="ols",
-                        trendline_color_override="#d97706"
-                    )
-                    fig.update_traces(
-                        marker=dict(color="#f59e0b", size=8, opacity=0.8),
-                        textposition="top center", textfont=dict(size=10)
-                    )
-                    fig.update_layout(
-                        plot_bgcolor="white", paper_bgcolor="white",
-                        font=dict(color="#1a1a2e", size=13),
-                        title_font=dict(color="#0d1b2a", size=15),
-                        xaxis=dict(gridcolor="#e8edf5", linecolor="#c5d5f5",
-                                   title=x_label),
-                        yaxis=dict(gridcolor="#e8edf5", linecolor="#c5d5f5",
-                                   title=y_label),
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-            elif labels and values and len(labels) == len(values):
-                chart_df = pd.DataFrame({"Label": labels, "Value": values})
-                if chart_type == "line":
-                    fig = px.line(
-                        chart_df, x="Label", y="Value", title=title, markers=True
-                    )
-                    fig.update_traces(line_color="#f59e0b", marker_color="#f59e0b")
-                else:
-                    fig = px.bar(
-                        chart_df, x="Label", y="Value", title=title,
-                        color="Value", color_continuous_scale="Blues"
-                    )
-                fig.update_layout(
-                    xaxis_title="",
-                    yaxis_title="Value",
-                    plot_bgcolor="white",
-                    paper_bgcolor="white",
-                    font=dict(color="#1a1a2e", size=13),
-                    title_font=dict(color="#0d1b2a", size=15),
-                    xaxis=dict(gridcolor="#e8edf5", linecolor="#c5d5f5"),
-                    yaxis=dict(gridcolor="#e8edf5", linecolor="#c5d5f5"),
-                )
-                st.plotly_chart(fig, use_container_width=True)
+            return clean_text, chart_data
         except Exception:
-            chart_data = None
-        return clean_text, chart_data
-    # No separator — strip any stray code fences and return as-is
+            return clean_text, None
     clean = re.sub(r'```.*?```', '', answer_text, flags=re.DOTALL).strip()
     return clean, None
+
+
+def render_chart_data(chart_data):
+    """Render a chart_data dict as a Plotly chart. Safe to call on every rerun."""
+    if not chart_data:
+        return
+    try:
+        labels = chart_data.get("labels", [])
+        values = chart_data.get("values", [])
+        title  = chart_data.get("title", "Chart")
+        chart_type = chart_data.get("type", "bar")
+
+        if chart_type == "scatter":
+            x_vals    = chart_data.get("x", [])
+            y_vals    = chart_data.get("y", [])
+            x_label   = chart_data.get("x_label", "X")
+            y_label   = chart_data.get("y_label", "Y")
+            pt_labels = chart_data.get("labels", [None] * len(x_vals))
+            if x_vals and y_vals and len(x_vals) == len(y_vals):
+                scatter_df = pd.DataFrame({
+                    x_label: x_vals,
+                    y_label: y_vals,
+                    "Label": pt_labels if pt_labels else [""] * len(x_vals)
+                })
+                fig = px.scatter(
+                    scatter_df, x=x_label, y=y_label,
+                    text="Label" if pt_labels else None,
+                    title=title, trendline="ols",
+                    trendline_color_override="#d97706"
+                )
+                fig.update_traces(
+                    marker=dict(color="#f59e0b", size=8, opacity=0.8),
+                    textposition="top center", textfont=dict(size=10)
+                )
+                fig.update_layout(
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    font=dict(color="#1a1a2e", size=13),
+                    title_font=dict(color="#0d1b2a", size=15),
+                    xaxis=dict(gridcolor="#e8edf5", linecolor="#c5d5f5", title=x_label),
+                    yaxis=dict(gridcolor="#e8edf5", linecolor="#c5d5f5", title=y_label),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        elif labels and values and len(labels) == len(values):
+            chart_df = pd.DataFrame({"Label": labels, "Value": values})
+            if chart_type == "line":
+                fig = px.line(chart_df, x="Label", y="Value", title=title, markers=True)
+                fig.update_traces(line_color="#f59e0b", marker_color="#f59e0b")
+            else:
+                fig = px.bar(
+                    chart_df, x="Label", y="Value", title=title,
+                    color="Value", color_continuous_scale="Blues"
+                )
+            fig.update_layout(
+                xaxis_title="", yaxis_title="Value",
+                plot_bgcolor="white", paper_bgcolor="white",
+                font=dict(color="#1a1a2e", size=13),
+                title_font=dict(color="#0d1b2a", size=15),
+                xaxis=dict(gridcolor="#e8edf5", linecolor="#c5d5f5"),
+                yaxis=dict(gridcolor="#e8edf5", linecolor="#c5d5f5"),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    except Exception:
+        pass
 
 
 @st.cache_data
@@ -3420,65 +3420,10 @@ if uploaded_file is not None or using_sample:
                                             history=st.session_state.get("history", []),
                                             force_chart=_wants_chart)
                     clean_answer, chart_data = try_render_chart(raw_answer)
-
-                    # Confidence indicator (#19)
                     _conf_level, _conf_color, _conf_tip = compute_confidence(clean_answer)
 
-                    _encoded = base64.b64encode(clean_answer.encode()).decode()
-                    st.markdown(f"""
-                    <div class="section-header" style="margin-top:1.2rem;">
-                        <div class="section-header-icon">📊</div>
-                        <div class="section-header-text">Analysis</div>
-                        <span style="margin-left:auto;font-size:0.65rem;font-weight:700;
-                                     text-transform:uppercase;letter-spacing:0.08em;
-                                     color:{_conf_color};border:1.5px solid {_conf_color};
-                                     border-radius:20px;padding:2px 9px;"
-                              title="{_conf_tip}">
-                            {_conf_level} CONFIDENCE
-                        </span>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    _answer_html = _md_to_html(fix_dollar_signs(clean_answer))
-                    st.markdown(
-                        f'<div class="answer-card">{_answer_html}</div>',
-                        unsafe_allow_html=True
-                    )
-                    components.html(
-                        f"""<button onclick="
-                            navigator.clipboard.writeText(atob('{_encoded}')).then(()=>{{
-                                this.textContent='✓ Copied!';
-                                this.style.color='#16a34a';
-                                this.style.borderColor='#bbf7d0';
-                                setTimeout(()=>{{this.textContent='📋 Copy';
-                                    this.style.color='#d97706';
-                                    this.style.borderColor='#fcd34d';}},2000);
-                            }});"
-                            style="background:transparent;border:1.5px solid #fcd34d;
-                                   border-radius:20px;padding:3px 12px;font-size:11px;
-                                   color:#d97706;cursor:pointer;font-family:inherit;
-                                   margin-top:2px;">
-                            📋 Copy
-                        </button>""",
-                        height=36,
-                    )
-
-                    # Follow-up questions (#20)
-                    with st.spinner("Generating follow-up questions..."):
-                        _followups = get_followup_questions(
-                            question, clean_answer, client, MODEL
-                        )
-                    if _followups:
-                        st.markdown(
-                            '<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;'
-                            'letter-spacing:0.1em;color:#7a7a7a;margin:0.8rem 0 0.4rem 0;">'
-                            '💬 Follow-up questions</div>',
-                            unsafe_allow_html=True
-                        )
-                        _fq_cols = st.columns(len(_followups))
-                        for _fqi, _fq in enumerate(_followups):
-                            if _fq_cols[_fqi].button(_fq, key=f"followup_{_fqi}_{len(st.session_state.history)}"):
-                                st.session_state.question_input = _fq
-                                st.rerun()
+                    # Generate follow-up questions and store in session_state
+                    _followups = get_followup_questions(question, clean_answer, client, MODEL)
 
                     st.session_state.history.append({
                         "question": question,
@@ -3486,10 +3431,73 @@ if uploaded_file is not None or using_sample:
                         "chart_data": chart_data,
                         "confidence": _conf_level
                     })
+                    # Persist display metadata so it survives reruns (e.g. download click)
+                    st.session_state["_conf_color"] = _conf_color
+                    st.session_state["_conf_tip"] = _conf_tip
+                    st.session_state["_followups"] = _followups
                 except Exception as e:
                     st.session_state.request_count -= 1
                     st.warning("I couldn't answer that. Try rephrasing your question.")
                     st.caption(f"Technical detail: {str(e)}")
+
+    # ── Persistent answer display — renders on every rerun from session_state ──
+    if st.session_state.history:
+        _latest = st.session_state.history[-1]
+        _disp_answer   = _latest["answer"]
+        _disp_chart    = _latest["chart_data"]
+        _disp_conf     = _latest["confidence"]
+        _disp_color    = st.session_state.get("_conf_color", "#16a34a")
+        _disp_tip      = st.session_state.get("_conf_tip", "")
+        _disp_followups = st.session_state.get("_followups", [])
+
+        _encoded = base64.b64encode(_disp_answer.encode()).decode()
+        st.markdown(f"""
+        <div class="section-header" style="margin-top:1.2rem;">
+            <div class="section-header-icon">📊</div>
+            <div class="section-header-text">Analysis</div>
+            <span style="margin-left:auto;font-size:0.65rem;font-weight:700;
+                         text-transform:uppercase;letter-spacing:0.08em;
+                         color:{_disp_color};border:1.5px solid {_disp_color};
+                         border-radius:20px;padding:2px 9px;"
+                  title="{_disp_tip}">
+                {_disp_conf} CONFIDENCE
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+        _answer_html = _md_to_html(fix_dollar_signs(_disp_answer))
+        st.markdown(f'<div class="answer-card">{_answer_html}</div>', unsafe_allow_html=True)
+        render_chart_data(_disp_chart)
+        components.html(
+            f"""<button onclick="
+                navigator.clipboard.writeText(atob('{_encoded}')).then(()=>{{
+                    this.textContent='✓ Copied!';
+                    this.style.color='#16a34a';
+                    this.style.borderColor='#bbf7d0';
+                    setTimeout(()=>{{this.textContent='📋 Copy';
+                        this.style.color='#d97706';
+                        this.style.borderColor='#fcd34d';}},2000);
+                }});"
+                style="background:transparent;border:1.5px solid #fcd34d;
+                       border-radius:20px;padding:3px 12px;font-size:11px;
+                       color:#d97706;cursor:pointer;font-family:inherit;
+                       margin-top:2px;">
+                📋 Copy
+            </button>""",
+            height=36,
+        )
+        if _disp_followups:
+            st.markdown(
+                '<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;'
+                'letter-spacing:0.1em;color:#7a7a7a;margin:0.8rem 0 0.4rem 0;">'
+                '💬 Follow-up questions</div>',
+                unsafe_allow_html=True
+            )
+            _fq_cols = st.columns(len(_disp_followups))
+            for _fqi, _fq in enumerate(_disp_followups):
+                if _fq_cols[_fqi].button(_fq, key=f"followup_{_fqi}_{len(st.session_state.history)}"):
+                    st.session_state.question_input = _fq
+                    st.session_state["_followups"] = []
+                    st.rerun()
 
     # ── Multi-turn conversation thread (#21) ─────────────────────────────────
     _all_history = st.session_state.history
