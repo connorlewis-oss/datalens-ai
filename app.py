@@ -48,6 +48,10 @@ if "use_sample" not in st.session_state:
     st.session_state.use_sample = False
 if "last_request_time" not in st.session_state:
     st.session_state.last_request_time = None
+if "tour_active" not in st.session_state:
+    st.session_state.tour_active = False
+if "tour_step" not in st.session_state:
+    st.session_state.tour_step = 0
 
 # ── Industry templates ─────────────────────────────────────────────────────────
 INDUSTRY_TEMPLATES = {
@@ -559,6 +563,28 @@ st.markdown("""
     }
     .sidebar-credit a { color: #fbbf24 !important; text-decoration: none; }
     .sidebar-credit a:hover { text-decoration: underline; }
+
+    /* ── Tour banner button ── */
+    #aria-tour-fab {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        color: #1c1c1e !important;
+        font-weight: 700;
+        font-size: 0.85rem;
+        letter-spacing: 0.02em;
+        padding: 10px 24px;
+        border-radius: 30px;
+        box-shadow: 0 4px 18px rgba(245,158,11,0.4);
+        text-decoration: none !important;
+        transition: box-shadow 0.15s, transform 0.15s;
+    }
+    #aria-tour-fab:hover {
+        box-shadow: 0 6px 24px rgba(245,158,11,0.6);
+        transform: translateY(-1px);
+        color: #1c1c1e !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -639,15 +665,6 @@ with st.sidebar:
                 st.rerun()
 
     st.divider()
-    st.write("**How to Use**")
-    st.write("""
-    1. Upload your data file (Primary Dataset)
-    2. Optionally add a second file to compare
-    3. Select an industry template if relevant
-    4. Review the auto-generated summary
-    5. Click a suggested question or type your own
-    6. Download your report when done
-    """)
     st.divider()
     st.caption("🔒 Your data is sent to the Anthropic API for analysis and is not stored or used for model training.")
     st.divider()
@@ -2477,6 +2494,153 @@ def _metric_html(label, value):
     """, unsafe_allow_html=True)
 
 
+# ── Tour trigger (query param) ────────────────────────────────────────────────
+try:
+    if st.query_params.get("tour") == "1":
+        st.session_state.tour_active = True
+        st.session_state.tour_step = 0
+        st.query_params.clear()
+        st.rerun()
+except Exception:
+    pass
+
+# ── Tour banner — centered at top of main content ─────────────────────────────
+if not st.session_state.get("tour_active"):
+    st.markdown("""
+    <div style="text-align:center;margin-bottom:1.2rem;">
+        <div style="font-size:0.72rem;font-weight:600;color:#9a8060;
+                    text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.5rem;">
+            New here?
+        </div>
+        <a id="aria-tour-fab" href="?tour=1">✨ &nbsp;Take the tour — see everything ARIA can do</a>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ── Onboarding tour overlay ───────────────────────────────────────────────────
+_TOUR_STEPS = [
+    {
+        "icon": "⚡",
+        "title": "Step 1 of 4 — Drop your data. Watch it come alive.",
+        "body": (
+            "Upload any <strong>CSV or Excel file</strong> and ARIA goes to work immediately — "
+            "no setup, no configuration, no SQL.<br><br>"
+            "Within seconds you get an <strong>AI-generated executive summary</strong>, automatic "
+            "<strong>anomaly detection</strong> (outliers flagged before you ask), "
+            "<strong>data quality warnings</strong>, and smart sidebar filters tailored to your columns.<br><br>"
+            "<div style='display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem;'>"
+            "<span style='background:#fef3c7;color:#92400e;border-radius:20px;padding:2px 10px;font-size:0.75rem;font-weight:600;'>✓ Auto summary</span>"
+            "<span style='background:#fef3c7;color:#92400e;border-radius:20px;padding:2px 10px;font-size:0.75rem;font-weight:600;'>✓ Anomaly detection</span>"
+            "<span style='background:#fef3c7;color:#92400e;border-radius:20px;padding:2px 10px;font-size:0.75rem;font-weight:600;'>✓ Data quality check</span>"
+            "<span style='background:#fef3c7;color:#92400e;border-radius:20px;padding:2px 10px;font-size:0.75rem;font-weight:600;'>✓ Smart filters</span>"
+            "</div>"
+        ),
+        "tip": "💡 Load a second file in the Compare Dataset slot — then ask questions that span both datasets at once.",
+    },
+    {
+        "icon": "🧠",
+        "title": "Step 2 of 4 — Ask like a consultant. Get answers like one.",
+        "body": (
+            "Forget pivot tables. Type questions in plain English and get structured analysis back — "
+            "complete with <strong>confidence badges</strong> (HIGH / MEDIUM / LOW) that tell you "
+            "exactly how strongly the data supports each conclusion.<br><br>"
+            "<strong>Try questions like:</strong><br>"
+            "<div style='background:#f8f4ee;border-radius:8px;padding:0.6rem 0.9rem;margin:0.5rem 0;font-size:0.82rem;color:#3a3a3a;'>"
+            "\"Which customer segment drives the most profit — and why?\"<br>"
+            "\"Show me a bar chart of revenue by region\"<br>"
+            "\"Are there any products with unusually high return rates?\""
+            "</div>"
+            "Open <strong>Strategic Questions</strong> for consultant-level prompts generated specifically for your data. "
+            "Every answer comes with <strong>3 AI-suggested follow-ups</strong> so you never hit a dead end."
+        ),
+        "tip": "💡 Ask for any chart type by name — bar, line, scatter — and ARIA builds it from your data automatically.",
+    },
+    {
+        "icon": "🔬",
+        "title": "Step 3 of 4 — Analytics that go way beyond Q&A.",
+        "body": (
+            "Scroll down past the query panel to find the analytical engine most tools don't have:<br><br>"
+            "<strong>📈 Trend & Forecast</strong> — auto-detects time series in your data and projects the next 3 periods with a confidence band.<br><br>"
+            "<strong>🎯 Driver Analysis</strong> — ranks every column by how much it explains variance in your key metric. Find out <em>what actually moves the needle</em>.<br><br>"
+            "<strong>🎰 What-If Simulator</strong> — adjust drivers with sliders and see the projected revenue or profit impact in real time. Built-in scenario modeling, no spreadsheet required.<br><br>"
+            "<strong>🔍 Column Profiler</strong> — click any column to instantly see its full distribution, outliers, and summary stats."
+        ),
+        "tip": "💡 The What-If Simulator uses regression-based impact estimates — the same math behind financial modeling tools.",
+    },
+    {
+        "icon": "📄",
+        "title": "Step 4 of 4 — Export a report worth sharing.",
+        "body": (
+            "When your analysis is done, ARIA packages everything into a professional deliverable — "
+            "not just a screenshot, but a <strong>structured report</strong> with your executive summary, "
+            "every Q&A exchange, and your full conversation thread.<br><br>"
+            "<div style='display:flex;gap:0.8rem;flex-wrap:wrap;margin:0.5rem 0;'>"
+            "<div style='flex:1;min-width:130px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:0.6rem 0.8rem;'>"
+            "<div style='font-weight:700;color:#166534;font-size:0.82rem;'>📥 HTML Report</div>"
+            "<div style='font-size:0.75rem;color:#166534;margin-top:2px;'>Interactive, shareable in any browser</div>"
+            "</div>"
+            "<div style='flex:1;min-width:130px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:0.6rem 0.8rem;'>"
+            "<div style='font-weight:700;color:#1e40af;font-size:0.82rem;'>📄 PDF Report</div>"
+            "<div style='font-size:0.75rem;color:#1e40af;margin-top:2px;'>Clean, print-ready, send to anyone</div>"
+            "</div>"
+            "</div>"
+            "Your full <strong>Conversation Thread</strong> is preserved below every session — "
+            "every question, answer, and confidence rating, in order."
+        ),
+        "tip": "💡 The PDF includes your executive summary + every Q&A — ready to attach to a slide deck or email.",
+    },
+]
+
+if st.session_state.get("tour_active"):
+    _step = st.session_state.tour_step
+    _ts = _TOUR_STEPS[_step]
+    _is_last = (_step == len(_TOUR_STEPS) - 1)
+    _progress_dots = "".join(
+        f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;'
+        f'background:{"#f59e0b" if i == _step else "#d4c8b0"};margin:0 3px;"></span>'
+        for i in range(len(_TOUR_STEPS))
+    )
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#ffffff 0%,#fffbf0 100%);
+                border:2px solid #f59e0b;border-radius:18px;
+                padding:1.8rem 2rem 1.4rem 2rem;
+                box-shadow:0 12px 40px rgba(245,158,11,0.18),0 2px 8px rgba(0,0,0,0.07);
+                margin-bottom:1.4rem;">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;
+                    border-bottom:1px solid #fde68a;padding-bottom:0.9rem;">
+            <span style="font-size:1.8rem;line-height:1;">{_ts["icon"]}</span>
+            <span style="font-size:1rem;font-weight:800;color:#1c1c1e;letter-spacing:-0.01em;">{_ts["title"]}</span>
+            <span style="margin-left:auto;display:flex;align-items:center;gap:4px;">{_progress_dots}</span>
+        </div>
+        <div style="font-size:0.88rem;color:#2a2a2a;line-height:1.75;margin-bottom:1rem;">
+            {_ts["body"]}
+        </div>
+        <div style="background:#fffbf0;border-left:4px solid #f59e0b;
+                    border-radius:0 10px 10px 0;padding:0.55rem 1rem;
+                    font-size:0.8rem;color:#78350f;font-style:italic;">
+            {_ts["tip"]}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    _tc1, _tc2, _tc3 = st.columns([1, 1, 1])
+    with _tc1:
+        if st.button("✕ Close tour", key="tour_close", use_container_width=True):
+            st.session_state.tour_active = False
+            st.rerun()
+    with _tc2:
+        if _step > 0:
+            if st.button("← Back", key="tour_back", use_container_width=True):
+                st.session_state.tour_step -= 1
+                st.rerun()
+    with _tc3:
+        if _is_last:
+            if st.button("✓ Got it!", key="tour_finish", type="primary", use_container_width=True):
+                st.session_state.tour_active = False
+                st.rerun()
+        else:
+            if st.button("Next →", key="tour_next", type="primary", use_container_width=True):
+                st.session_state.tour_step += 1
+                st.rerun()
+
 # ── File upload ────────────────────────────────────────────────────────────────
 col1, col2 = st.columns(2)
 with col1:
@@ -2507,14 +2671,31 @@ if uploaded_file is None and not st.session_state.use_sample:
         </div>
     </div>
     """, unsafe_allow_html=True)
-    st.markdown(
-        "<p style='text-align:center; color:#9aaccc; font-size:0.85rem; margin-top:-0.5rem;'>"
-        "— or —</p>",
-        unsafe_allow_html=True,
-    )
+    st.markdown("""
+    <div style="text-align:center;margin:0.4rem 0 0.8rem 0;">
+        <div style="font-size:0.78rem;font-weight:600;color:#7a6a50;
+                    text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.7rem;">
+            — or try it right now —
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     _c1, _c2, _c3 = st.columns([1, 2, 1])
     with _c2:
-        if st.button("🗂️ Load sample data to explore", use_container_width=True):
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#f59e0b,#d97706);
+                    border-radius:14px;padding:2px;margin-bottom:6px;">
+            <div style="background:linear-gradient(135deg,#fffbf0,#fef3c7);
+                        border-radius:12px;padding:0.8rem 1rem;text-align:center;">
+                <div style="font-size:0.8rem;color:#78350f;font-weight:600;margin-bottom:3px;">
+                    🏪 Live retail demo — 500 orders, 3 years of data
+                </div>
+                <div style="font-size:0.72rem;color:#92400e;">
+                    Region · Product · Profit · Trends · What-If Simulator
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("▶ &nbsp;Launch demo — no upload needed", use_container_width=True, type="primary"):
             st.session_state.use_sample = True
             st.rerun()
 
@@ -2622,15 +2803,66 @@ if uploaded_file is not None or using_sample:
         st.info(f"🔍 **Filtered view** — {' · '.join(_filter_desc)} · {len(df):,} rows", icon=None)
 
     if using_sample:
-        st.info(
-            "📊 **You're exploring the sample dataset** — a synthetic 500-row retail sales "
-            "dataset with orders from 2022–2024. Try the suggested questions below, or ask "
-            "anything! When ready, upload your own file using the sidebar.",
-            icon=None,
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#1c1c1e,#2d2d2d);
+                    border:1.5px solid #f59e0b;border-radius:16px;
+                    padding:1.2rem 1.5rem;margin-bottom:0.8rem;">
+            <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem;">
+                <span style="font-size:1.1rem;">🏪</span>
+                <span style="font-weight:800;color:#f59e0b;font-size:0.95rem;letter-spacing:-0.01em;">
+                    Live Demo — Cornerstone Retail Co.
+                </span>
+                <span style="margin-left:auto;font-size:0.68rem;color:#9a8a6a;
+                             background:#2d2d2d;border:1px solid #4a4a4a;
+                             border-radius:20px;padding:2px 10px;">
+                    DEMO DATA
+                </span>
+            </div>
+            <div style="font-size:0.82rem;color:#d4c8b0;line-height:1.6;margin-bottom:0.9rem;">
+                You're analyzing <strong style="color:#fbbf24;">500 real-world style orders</strong>
+                across 3 years (2022–2024), 4 regions, 3 product categories, and 3 customer segments.
+                Every ARIA feature is live — try the questions below or ask your own.
+            </div>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <span style="background:#2d2d2d;border:1px solid #4a4a4a;color:#d4c8b0;
+                             border-radius:20px;padding:2px 10px;font-size:0.72rem;">📈 3 years of trends</span>
+                <span style="background:#2d2d2d;border:1px solid #4a4a4a;color:#d4c8b0;
+                             border-radius:20px;padding:2px 10px;font-size:0.72rem;">🗺️ 4 regions</span>
+                <span style="background:#2d2d2d;border:1px solid #4a4a4a;color:#d4c8b0;
+                             border-radius:20px;padding:2px 10px;font-size:0.72rem;">📦 3 product categories</span>
+                <span style="background:#2d2d2d;border:1px solid #4a4a4a;color:#d4c8b0;
+                             border-radius:20px;padding:2px 10px;font-size:0.72rem;">👥 3 customer segments</span>
+                <span style="background:#2d2d2d;border:1px solid #4a4a4a;color:#d4c8b0;
+                             border-radius:20px;padding:2px 10px;font-size:0.72rem;">💰 Sales & profit data</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Showcase questions — curated to demo the most impressive features
+        _showcase_qs = [
+            "Which region is the most profitable and what's driving that?",
+            "Show me a bar chart of profit by product category",
+            "Which customer segment has the worst profit margin — and why?",
+            "Are there any products or categories losing us money despite high sales?",
+            "What's the sales trend over time — are we growing?",
+            "Which discount levels are actually hurting our profitability?",
+        ]
+        st.markdown(
+            '<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+            'letter-spacing:0.1em;color:#9a8060;margin:0.2rem 0 0.5rem 0;">'
+            '⚡ Try these questions to see ARIA in action</div>',
+            unsafe_allow_html=True
         )
+        _sq_cols = st.columns(3)
+        for _sqi, _sq in enumerate(_showcase_qs):
+            if _sq_cols[_sqi % 3].button(_sq, key=f"showcase_q_{_sqi}", use_container_width=True):
+                st.session_state.question_input = _sq
+                st.session_state["_auto_analyze"] = True
+                st.rerun()
+
         _samp_col1, _samp_col2 = st.columns([4, 1])
         with _samp_col2:
-            if st.button("✕ Clear sample", use_container_width=True):
+            if st.button("✕ Use my own data", use_container_width=True):
                 st.session_state.use_sample = False
                 for _k in ("summary", "history", "suggestions",
                            "last_file", "last_suggestion_key"):
@@ -3390,7 +3622,8 @@ if uploaded_file is not None or using_sample:
     if remaining <= 5:
         st.caption(f"⚠️ {remaining} analysis request(s) remaining this session.")
 
-    if st.button("Analyze", type="primary") and question:
+    _auto_analyze = st.session_state.pop("_auto_analyze", False)
+    if (st.button("Analyze", type="primary") or _auto_analyze) and question:
         # Check session limit
         if st.session_state.request_count >= MAX_REQUESTS_PER_SESSION:
             st.error(
