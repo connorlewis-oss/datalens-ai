@@ -661,7 +661,7 @@ with st.sidebar:
             _sq = _sh["question"]
             _sq_short = _sq[:48] + "…" if len(_sq) > 48 else _sq
             if st.button(_sq_short, key=f"sidebar_hist_{_shi}", use_container_width=True):
-                st.session_state.question_input = _sq
+                st.session_state["_pending_question"] = _sq
                 st.rerun()
 
     st.divider()
@@ -2494,11 +2494,18 @@ def _metric_html(label, value):
     """, unsafe_allow_html=True)
 
 
-# ── Tour trigger (query param) ────────────────────────────────────────────────
+# ── Query param triggers (tour + voice) ───────────────────────────────────────
 try:
     if st.query_params.get("tour") == "1":
         st.session_state.tour_active = True
         st.session_state.tour_step = 0
+        st.query_params.clear()
+        st.rerun()
+    elif st.query_params.get("q"):
+        _voice_q = st.query_params["q"].strip()
+        if _voice_q:
+            st.session_state.question_input = _voice_q
+            st.session_state["_auto_analyze"] = True
         st.query_params.clear()
         st.rerun()
 except Exception:
@@ -2856,7 +2863,7 @@ if uploaded_file is not None or using_sample:
         _sq_cols = st.columns(3)
         for _sqi, _sq in enumerate(_showcase_qs):
             if _sq_cols[_sqi % 3].button(_sq, key=f"showcase_q_{_sqi}", use_container_width=True):
-                st.session_state.question_input = _sq
+                st.session_state["_pending_question"] = _sq
                 st.session_state["_auto_analyze"] = True
                 st.rerun()
 
@@ -3596,7 +3603,8 @@ if uploaded_file is not None or using_sample:
     cols = st.columns(3)
     for i, suggestion in enumerate(suggestions):
         if cols[i % 3].button(suggestion, key=f"suggestion_{i}"):
-            st.session_state.question_input = suggestion
+            st.session_state["_pending_question"] = suggestion
+            st.rerun()
 
     # Advanced analysis questions — AI-generated and tailored to this dataset
     _adv_qs = st.session_state.get("advanced_questions", [])
@@ -3609,13 +3617,77 @@ if uploaded_file is not None or using_sample:
             adv_cols = st.columns(2)
             for i, q in enumerate(_adv_qs):
                 if adv_cols[i % 2].button(q, key=f"advanced_{i}"):
-                    st.session_state.question_input = q
+                    st.session_state["_pending_question"] = q
+                    st.rerun()
 
-    question = st.text_input(
-        "Type your question or request here:",
-        placeholder="e.g. Which region had the highest sales? or Show me the monthly sales trend.",
-        key="question_input"
-    )
+    # Apply any pending question (from buttons rendered after the widget in prior run)
+    if "_pending_question" in st.session_state:
+        st.session_state.question_input = st.session_state.pop("_pending_question")
+
+    _q_col, _mic_col = st.columns([11, 1])
+    with _q_col:
+        question = st.text_input(
+            "Type your question or request here:",
+            placeholder="e.g. Which region had the highest sales? or Show me the monthly sales trend.",
+            key="question_input"
+        )
+    with _mic_col:
+        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+        components.html("""
+        <div style="display:flex;align-items:center;justify-content:center;height:38px;">
+            <button id="micBtn" title="Click to speak your question"
+                onclick="startVoice()"
+                style="background:linear-gradient(135deg,#f59e0b,#d97706);
+                       border:none;border-radius:50%;width:38px;height:38px;
+                       font-size:17px;cursor:pointer;display:flex;align-items:center;
+                       justify-content:center;box-shadow:0 2px 8px rgba(245,158,11,0.4);
+                       transition:transform 0.15s,box-shadow 0.15s;">
+                🎤
+            </button>
+        </div>
+        <style>
+            @keyframes pulse {
+                0%,100% { box-shadow:0 0 0 0 rgba(245,158,11,0.6); }
+                50%      { box-shadow:0 0 0 8px rgba(245,158,11,0); }
+            }
+            #micBtn.listening {
+                background:linear-gradient(135deg,#ef4444,#dc2626) !important;
+                animation: pulse 1s infinite;
+            }
+        </style>
+        <script>
+        function startVoice() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert("Voice input isn't supported in this browser.\\nPlease use Chrome or Edge.");
+                return;
+            }
+            const btn = document.getElementById('micBtn');
+            const rec = new SpeechRecognition();
+            rec.lang = 'en-US';
+            rec.interimResults = false;
+            rec.maxAlternatives = 1;
+            btn.classList.add('listening');
+            btn.textContent = '🔴';
+            rec.start();
+            rec.onresult = function(e) {
+                const transcript = e.results[0][0].transcript;
+                btn.classList.remove('listening');
+                btn.textContent = '✓';
+                setTimeout(() => { btn.textContent = '🎤'; }, 1500);
+                window.parent.location.href = '?q=' + encodeURIComponent(transcript);
+            };
+            rec.onerror = function() {
+                btn.classList.remove('listening');
+                btn.textContent = '🎤';
+            };
+            rec.onend = function() {
+                btn.classList.remove('listening');
+                if (btn.textContent === '🔴') btn.textContent = '🎤';
+            };
+        }
+        </script>
+        """, height=50)
 
     # Show usage counter
     remaining = MAX_REQUESTS_PER_SESSION - st.session_state.request_count
@@ -3728,7 +3800,8 @@ if uploaded_file is not None or using_sample:
             _fq_cols = st.columns(len(_disp_followups))
             for _fqi, _fq in enumerate(_disp_followups):
                 if _fq_cols[_fqi].button(_fq, key=f"followup_{_fqi}_{len(st.session_state.history)}"):
-                    st.session_state.question_input = _fq
+                    st.session_state["_pending_question"] = _fq
+                    st.session_state["_auto_analyze"] = True
                     st.session_state["_followups"] = []
                     st.rerun()
 
