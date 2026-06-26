@@ -1,3 +1,4 @@
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://datalens-ai-ja8hzskzkzvyfdrcesyusu.streamlit.app)
 ARIA Business Intelligence Solution
 AI Research & Insight Analyst
 🔗 Live app: datalens-ai.streamlit.app
