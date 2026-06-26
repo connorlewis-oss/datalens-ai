@@ -54,6 +54,12 @@ if "tour_step" not in st.session_state:
     st.session_state.tour_step = 0
 if "_last_error" not in st.session_state:
     st.session_state["_last_error"] = None
+if "_gs_url" not in st.session_state:
+    st.session_state["_gs_url"] = ""
+if "_gs_df" not in st.session_state:
+    st.session_state["_gs_df"] = None
+if "_gs_name" not in st.session_state:
+    st.session_state["_gs_name"] = ""
 
 # ── Industry template themes (used as prompting hints, not as literal questions) ─
 INDUSTRY_TEMPLATE_THEMES = {
@@ -687,6 +693,45 @@ st.markdown("""
 
 
 # ── Helper functions ───────────────────────────────────────────────────────────
+
+def parse_gsheet_url(url: str):
+    """Extract (sheet_id, gid) from any Google Sheets URL. Returns (None, None) if invalid."""
+    m = re.search(r'/spreadsheets/d/([a-zA-Z0-9\-_]+)', url)
+    if not m:
+        return None, None
+    sheet_id = m.group(1)
+    gid_m = re.search(r'gid=(\d+)', url)
+    gid = gid_m.group(1) if gid_m else "0"
+    return sheet_id, gid
+
+
+def load_google_sheet(url: str) -> pd.DataFrame:
+    """
+    Fetch a Google Sheet as a DataFrame via its CSV export URL.
+    The sheet must be shared as 'Anyone with the link can view'.
+    """
+    sheet_id, gid = parse_gsheet_url(url)
+    if not sheet_id:
+        raise ValueError("Could not find a Sheet ID in that URL. Make sure you paste the full Google Sheets link.")
+    export_url = (
+        f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+        f"/export?format=csv&gid={gid}"
+    )
+    try:
+        df = pd.read_csv(export_url)
+        return df
+    except Exception as e:
+        err = str(e).lower()
+        if "403" in err or "401" in err or "forbidden" in err:
+            raise ValueError(
+                "Access denied. Make sure the sheet is shared as "
+                "**Anyone with the link → Viewer**."
+            )
+        elif "404" in err or "not found" in err:
+            raise ValueError("Sheet not found. Double-check the URL.")
+        else:
+            raise ValueError(f"Could not load the sheet: {e}")
+
 
 def load_file(uploaded_file):
     """Load a CSV or Excel file into a Pandas dataframe."""
@@ -2665,22 +2710,88 @@ if st.session_state.get("tour_active"):
                 st.session_state.tour_step += 1
                 st.rerun()
 
-# ── File upload ────────────────────────────────────────────────────────────────
-col1, col2 = st.columns(2)
-with col1:
-    st.write("**Primary Dataset**")
-    uploaded_file = st.file_uploader(
-        "Upload a CSV or Excel file", type=["csv", "xlsx", "xls"], key="file1"
+# ── Data source tabs ───────────────────────────────────────────────────────────
+_src_tab1, _src_tab2 = st.tabs(["📁  Upload File", "🔗  Google Sheets"])
+
+with _src_tab1:
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("**Primary Dataset**")
+        uploaded_file = st.file_uploader(
+            "Upload a CSV or Excel file", type=["csv", "xlsx", "xls"], key="file1"
+        )
+    with col2:
+        st.write("**Compare Dataset** *(optional)*")
+        uploaded_file2 = st.file_uploader(
+            "Upload a second file to compare", type=["csv", "xlsx", "xls"], key="file2"
+        )
+
+with _src_tab2:
+    st.markdown(
+        "<p style='font-size:0.82rem;color:#6a6a6a;margin-bottom:0.4rem;'>"
+        "Paste any Google Sheets link — the sheet must be shared as "
+        "<strong>Anyone with the link → Viewer</strong>.</p>",
+        unsafe_allow_html=True,
     )
-with col2:
-    st.write("**Compare Dataset** *(optional)*")
-    uploaded_file2 = st.file_uploader(
-        "Upload a second file to compare", type=["csv", "xlsx", "xls"], key="file2"
+    _gs_input = st.text_input(
+        "Google Sheets URL",
+        placeholder="https://docs.google.com/spreadsheets/d/...",
+        label_visibility="collapsed",
+        key="_gs_url_input",
     )
+    _gs_col1, _gs_col2 = st.columns([2, 1])
+    with _gs_col1:
+        _gs_load = st.button("📥  Load Sheet", type="primary", use_container_width=True)
+    with _gs_col2:
+        _gs_refresh = st.button(
+            "🔄  Refresh",
+            use_container_width=True,
+            disabled=not bool(st.session_state["_gs_url"]),
+        )
+
+    if _gs_load and _gs_input.strip():
+        with st.spinner("Fetching sheet from Google..."):
+            try:
+                _fetched = load_google_sheet(_gs_input.strip())
+                if _fetched.empty:
+                    st.error("The sheet loaded but appears to be empty. Check that the correct tab is shared.")
+                else:
+                    st.session_state["_gs_df"] = _fetched
+                    st.session_state["_gs_url"] = _gs_input.strip()
+                    _sid, _ = parse_gsheet_url(_gs_input.strip())
+                    st.session_state["_gs_name"] = f"Google Sheet ({_sid[:8]}…)"
+                    # Clear file-based state so questions regenerate for this source
+                    st.session_state.pop("last_suggestion_key", None)
+                    st.session_state.pop("summary", None)
+                    st.session_state["history"] = []
+                    st.success(f"✅ Loaded {len(_fetched):,} rows × {len(_fetched.columns)} columns")
+            except ValueError as _ge:
+                st.error(str(_ge))
+
+    if _gs_refresh and st.session_state["_gs_url"]:
+        with st.spinner("Refreshing from Google Sheets..."):
+            try:
+                _fetched = load_google_sheet(st.session_state["_gs_url"])
+                st.session_state["_gs_df"] = _fetched
+                st.session_state.pop("last_suggestion_key", None)
+                st.session_state.pop("summary", None)
+                st.success(f"✅ Refreshed — {len(_fetched):,} rows")
+            except ValueError as _ge:
+                st.error(str(_ge))
+
+    if st.session_state["_gs_df"] is not None:
+        st.caption(
+            f"🟢 Active: {st.session_state['_gs_name']}  ·  "
+            f"{len(st.session_state['_gs_df']):,} rows  ·  "
+            f"{', '.join(st.session_state['_gs_df'].columns[:5].tolist())}"
+            + ("…" if len(st.session_state['_gs_df'].columns) > 5 else "")
+        )
+
 mode = "Compare Two Files" if uploaded_file2 is not None else "Single File"
 
 # ── Landing state (no file uploaded yet) ──────────────────────────────────────
-if uploaded_file is None and not st.session_state.use_sample:
+_using_gs = st.session_state["_gs_df"] is not None and uploaded_file is None
+if uploaded_file is None and not st.session_state.use_sample and not _using_gs:
     st.markdown("""
     <div class="hero-card">
         <h2>Your data has answers.<br>Just ask.</h2>
@@ -2724,7 +2835,7 @@ if uploaded_file is None and not st.session_state.use_sample:
             st.rerun()
 
 # Sample data: also offer "load sample" below the uploader when no file is uploaded
-if uploaded_file is None and not st.session_state.use_sample:
+if uploaded_file is None and not st.session_state.use_sample and not _using_gs:
     st.markdown(
         "<p style='text-align:center; color:#9aaccc; font-size:0.82rem; margin-top:0.3rem;'>"
         "No file yet? Try the sample dataset above.</p>",
@@ -2735,12 +2846,17 @@ if uploaded_file is None and not st.session_state.use_sample:
 using_sample = st.session_state.get("use_sample", False) and uploaded_file is None
 
 # ── Main analysis ──────────────────────────────────────────────────────────────
-if uploaded_file is not None or using_sample:
+if uploaded_file is not None or using_sample or _using_gs:
     # ── Load data ────────────────────────────────────────────────────────────
     if using_sample:
         df = get_sample_data()
         effective_name = "Sample Retail Dataset (500 rows)"
         file_key = "sample_data_v1"
+        df2 = None
+    elif _using_gs:
+        df = st.session_state["_gs_df"]
+        effective_name = st.session_state["_gs_name"]
+        file_key = "gs_" + st.session_state["_gs_url"]
         df2 = None
     else:
         # File size check
@@ -3020,8 +3136,8 @@ if uploaded_file is not None or using_sample:
                 _pfig.update_yaxes(color="#1c1c1e")
                 st.plotly_chart(_pfig, use_container_width=True)
 
-    # Stable file identifier — set above in sample/upload branches
-    if not using_sample:
+    # Stable file identifier — set above in sample/GS branches; compute here for uploads
+    if not using_sample and not _using_gs:
         file_key = (
             getattr(uploaded_file, "file_id", uploaded_file.name + str(uploaded_file.size)) +
             (getattr(uploaded_file2, "file_id", uploaded_file2.name + str(uploaded_file2.size))
