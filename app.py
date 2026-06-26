@@ -733,13 +733,68 @@ def load_google_sheet(url: str) -> pd.DataFrame:
             raise ValueError(f"Could not load the sheet: {e}")
 
 
+def _clean_col_names(df: pd.DataFrame) -> pd.DataFrame:
+    """Replace newlines / extra whitespace in column names with a single space."""
+    df.columns = [" ".join(str(c).split()) for c in df.columns]
+    return df
+
+
+def _csv_looks_ok(df) -> bool:
+    """
+    Return True if df looks like it was loaded with the right header row:
+    - First column name is reasonably short
+    - At most 30 % of columns are 'Unnamed: N'
+    """
+    cols = list(df.columns)
+    if not cols:
+        return False
+    unnamed_ratio = sum(1 for c in cols if str(c).startswith("Unnamed:")) / len(cols)
+    first_col_len  = len(str(cols[0]))
+    return unnamed_ratio <= 0.30 and first_col_len <= 40
+
+
 def load_file(uploaded_file):
-    """Load a CSV or Excel file into a Pandas dataframe."""
+    """
+    Load a CSV or Excel file into a Pandas DataFrame.
+    For CSVs, auto-detects and skips metadata preamble rows
+    (title, legend, section-header rows that precede the real column names).
+    """
+    import io
+
     try:
+        raw = uploaded_file.read()
+        uploaded_file.seek(0)          # reset so callers can re-read if needed
+
         if uploaded_file.name.lower().endswith(".csv"):
-            return pd.read_csv(uploaded_file)
+            # Try standard load first
+            df = pd.read_csv(io.BytesIO(raw))
+            if _csv_looks_ok(df):
+                return df
+
+            # First load looked like metadata was used as header.
+            # Try skipping 1–8 rows and pick the best result.
+            best_df      = df
+            best_unnamed = sum(1 for c in df.columns if str(c).startswith("Unnamed:"))
+
+            for skip in range(1, 9):
+                try:
+                    df_try = pd.read_csv(io.BytesIO(raw), skiprows=skip)
+                except Exception:
+                    break
+                unnamed_try = sum(
+                    1 for c in df_try.columns if str(c).startswith("Unnamed:")
+                )
+                if unnamed_try < best_unnamed:
+                    best_unnamed = unnamed_try
+                    best_df      = df_try
+                if _csv_looks_ok(df_try):
+                    return _clean_col_names(df_try)   # good enough — stop here
+
+            return _clean_col_names(best_df)   # return best we found even if not perfect
+
         else:
-            return pd.read_excel(uploaded_file)
+            return _clean_col_names(pd.read_excel(io.BytesIO(raw)))
+
     except Exception as e:
         st.error(
             f"**Could not read '{uploaded_file.name}'.**  \n"
