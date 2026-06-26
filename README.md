@@ -60,7 +60,6 @@ Get a key at console.anthropic.com. Never commit this file — it is already in 
 
 python3 -m streamlit run app.py
 
-The app opens at http://localhost:8501.
 
 
 Google Sheets Connector
