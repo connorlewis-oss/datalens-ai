@@ -1,129 +1,125 @@
-# DataLens AI
+ARIA Business Intelligence Solution
+AI Research & Insight Analyst
+ARIA is an AI-powered business intelligence tool built with Streamlit and Claude (Anthropic). Upload a spreadsheet or connect a Google Sheet and get instant, consultant-level analysis in plain English — no SQL, no dashboards, no data team required.
 
-**🔗 Live Demo → [AI Business Data Analyst](https://datalens-ai-ja8hzskzkzvyfdrcesyusu.streamlit.app)**
 
-An AI-powered business analytics tool that lets you upload any CSV dataset and instantly generate executive summaries, driver analysis, anomaly detection, forecasts, and natural language Q&A — no SQL or coding required.
+Features
+Data input
 
-Built by **Connor Lewis** | BS Business Analytics, Fairfield University | MS AI & Business Analytics (in progress)
+Upload CSV or Excel files (up to 10 MB)
+Connect a live Google Sheet — paste the URL and hit Refresh to pull the latest data
+Compare two datasets side by side
+Built-in retail demo dataset (no upload needed)
 
-![Python](https://img.shields.io/badge/Python-3.9+-blue) ![Streamlit](https://img.shields.io/badge/Streamlit-1.x-red) ![Claude](https://img.shields.io/badge/Claude-Haiku-orange)
+Analysis
 
----
+Executive summary generated on file load
+Plain English Q&A — ask anything about your data
+Auto-generated charts (bar, line, scatter)
+Anomaly detection — flags outliers automatically
+Driver analysis — identifies what's most correlated with your key metric
+Trend & forecast — projects the next 3 periods from historical data
+What-if simulator — adjust a variable and see the projected impact
+Statistical significance testing between groups
 
-## What It Does
+UX
 
-Upload a spreadsheet. Ask a question. Get a consultant-level answer with a chart.
+AI-generated suggested questions grounded in your actual column names
+Follow-up questions after every answer
+Conversation thread — scroll back through the full session
+Confidence indicator on every answer (High / Medium / Low)
+Copy button on answers
+Column profiling panel
+Data cleaning suggestions (missing values, text-as-numbers)
+PDF report export and HTML report download
+Onboarding tour for new users
 
-The app pre-calculates group summaries, correlations, anomaly scores, and driver rankings before sending anything to Claude — so answers are grounded in real numbers, not hallucinated estimates.
 
----
+Setup — Local
+1. Clone the repo
 
-## Features
+git clone https://github.com/YOUR_USERNAME/ai-data-analyst.git
 
-- **Plain English Q&A** — ask any business question and get a structured, data-grounded answer
-- **Executive Summary** — AI-generated overview of key trends, outliers, and business insights on upload
-- **Insight Cards** — top 4 highlights surfaced automatically from the data
-- **Driver Analysis** — identifies which variables most strongly influence your key metric using Pearson correlation and eta-squared
-- **Anomaly Detection** — flags statistical outliers using Z-score analysis
-- **Trend & Forecast** — linear regression-based forecasting on time series data
-- **What-If Simulator** — adjust key drivers and see projected impact on your target metric
-- **Auto Charts** — bar and line charts generated automatically when relevant
-- **Advanced AI Questions** — 8 consultant-level questions generated dynamically from your actual column names
-- **Smart suggested questions** — auto-generated from column headers, or choose from industry templates
-- **Data quality alerts** — flags missing values, duplicate rows, and numbers stored as text
-- **Compare Two Files mode** — upload two datasets and get pre-calculated diffs (absolute and % change)
-- **Downloadable HTML report** — export your full analysis session as a formatted report
-- **Rate limiting** — 100 questions per session, 3-second cooldown, 10 MB file size cap
+cd ai-data-analyst
 
----
+2. Install dependencies
 
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| UI | Streamlit |
-| AI | Anthropic Claude API (claude-haiku-4-5-20251001) |
-| Data | Pandas |
-| Charts | Plotly Express |
-| Environment | python-dotenv |
-
----
-
-## How It Works
-
-The core insight behind this app is that LLMs give inaccurate answers when asked to calculate from raw data rows. Instead, the app pre-calculates all the key statistics before sending anything to Claude:
-
-1. **Column detection** — identifies categorical columns (Category, Segment, Region, etc.) and numeric columns (Sales, Profit, etc.), with a priority-first ordering so important business dimensions are always included
-2. **Group summaries** — calculates sum, average, std deviation, min, max, count, and % of total for every useful column combination; grand totals are included in headers so Claude reads figures rather than computing them
-3. **Time-series summaries** — detects date columns and builds monthly totals, yearly totals, and year-over-year growth rates
-4. **Comparison diffs** — when two files are uploaded, pre-calculates absolute and percentage change by category so comparisons are accurate
-5. **Structured prompt** — sends pre-calculated statistics to Claude with explicit instructions to copy numbers directly from the data, never estimate, and end with a McKinsey-level strategic insight
-
----
-
-## Setup
-
-### Prerequisites
-- Python 3.9+
-- An Anthropic API key ([get one here](https://console.anthropic.com))
-
-### Install
-
-```bash
-git clone https://github.com/connorlewis-oss/datalens-ai.git
-cd datalens-ai
 pip install -r requirements.txt
-```
 
-### Configure
+3. Add your Anthropic API key
 
-Create a `.env` file in the project root:
+Create a .env file in the project root:
 
-```
 ANTHROPIC_API_KEY=sk-ant-your-key-here
-```
 
-### Run
+Get a key at console.anthropic.com. Never commit this file — it is already in .gitignore.
 
-```bash
+4. Run the app
+
 python3 -m streamlit run app.py
-```
 
-The app opens at `http://localhost:8501`
+The app opens at http://localhost:8501.
 
----
 
-## Sample Data
+Google Sheets Connector
+ARIA can read live data directly from Google Sheets — no file upload needed.
 
-The app works with any CSV or Excel file. To test it, download the [Superstore Sales Dataset](https://www.kaggle.com/datasets/rohitsahoo/sales-forecasting) from Kaggle and try questions like:
+Open your Google Sheet
+Click Share → Change to "Anyone with the link" → Viewer
+Copy the URL
+In ARIA, click the 🔗 Google Sheets tab, paste the URL, and click Load Sheet
+Use the 🔄 Refresh button anytime to pull the latest data from the sheet
 
-- *"What is the total sales by category?"*
-- *"Which customers have high sales but low profitability?"*
-- *"Show me the monthly sales trend"*
-- *"What is our revenue concentration risk across customers?"*
+Note: the sheet must be publicly viewable for the connector to work. Private sheet support (via OAuth) is on the roadmap.
 
----
 
-## Project Structure
+Deployment — Streamlit Cloud
+Push the repo to GitHub (never include your .env file)
+Go to share.streamlit.io and connect the repo
+In Advanced settings → Secrets, add:
 
-```
+ANTHROPIC_API_KEY = "sk-ant-your-key-here"
+
+Deploy — Streamlit Cloud installs requirements.txt automatically
+
+
+Project Structure
 ai-data-analyst/
+
 ├── app.py              # Main application
-├── requirements.txt    # Dependencies
-├── .env                # API key (not committed)
-└── .gitignore          # Excludes .env
-```
 
----
+├── requirements.txt    # Python dependencies
 
-## About
+├── .env                # API key (local only — never commit)
 
-Built as a resume project by Connor Lewis — BS in Business Analytics (Fairfield University), pursuing MS in AI and Business Analytics.
+├── .gitignore
 
-The goal was to demonstrate how AI can make data analysis accessible to non-technical business users, while showing technical proficiency in Python, API integration, prompt engineering, and data processing.
+└── README.md
 
----
 
-## License
+Dependencies
+Package
+Purpose
+streamlit
+Web app framework
+anthropic
+Claude API client
+pandas
+Data loading and processing
+plotly
+Interactive charts
+scipy
+Statistical significance tests
+fpdf2
+PDF report generation
+tabulate
+Data formatting for AI prompts
+python-dotenv
+Load .env file locally
 
-MIT
+
+
+Built by
+Connor Lewis — built with Claude (Anthropic) via the ARIA AI Research & Insight Analyst project.
+
+
