@@ -1,7 +1,6 @@
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://datalens-ai-ja8hzskzkzvyfdrcesyusu.streamlit.app)
 ARIA Business Intelligence Solution
 AI Research & Insight Analyst
-🔗 Live app: datalens-ai.streamlit.app
 
 ARIA is an AI-powered business intelligence tool built with Streamlit and Claude (Anthropic). Upload a spreadsheet or connect a Google Sheet and get instant, consultant-level analysis in plain English — no SQL, no dashboards, no data team required.
 
