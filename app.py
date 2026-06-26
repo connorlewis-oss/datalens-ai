@@ -2251,6 +2251,298 @@ def compute_insight_cards(df: pd.DataFrame, da: dict) -> list:
     return cards[:4]
 
 
+def build_dashboard(df: pd.DataFrame, da: dict):
+    """
+    Render an auto-generated dashboard: KPI cards, two charts, top/bottom performers table.
+    No API calls — pure pandas + plotly.
+    Always renders something regardless of data shape.
+    """
+    try:
+        # ── helpers ───────────────────────────────────────────────────────────
+        currency_kws = ["sales", "revenue", "profit", "income", "amount",
+                        "spend", "cost", "price", "total", "value"]
+        skip_num_kws = ["id", "zip", "postal", "phone"]   # intentionally narrow
+        skip_cat_kws = ["id", "postal", "zip", "phone", "address", "email"]
+
+        def _is_currency(col):
+            return any(k in col.lower() for k in currency_kws)
+
+        def _fmt_kpi(val, col):
+            if pd.isna(val):
+                return "N/A"
+            if _is_currency(col):
+                if abs(val) >= 1_000_000:
+                    return f"${val / 1_000_000:.1f}M"
+                if abs(val) >= 1_000:
+                    return f"${val / 1_000:.1f}K"
+                return f"${val:,.0f}"
+            if abs(val) >= 1_000_000:
+                return f"{val / 1_000_000:.1f}M"
+            if abs(val) >= 1_000:
+                return f"{val / 1_000:.1f}K"
+            return f"{val:,.1f}"
+
+        # ── column selection ──────────────────────────────────────────────────
+        all_num = list(df.select_dtypes(include="number").columns)
+
+        # Prefer non-ID numeric cols; fall back to all numeric if filter leaves nothing
+        filtered_num = [c for c in all_num
+                        if not any(kw in c.lower() for kw in skip_num_kws)]
+        if not filtered_num:
+            filtered_num = all_num  # last resort: use everything
+
+        priority_num = sorted(
+            filtered_num,
+            key=lambda c: (0 if any(k in c.lower() for k in currency_kws) else 1, c),
+        )
+        kpi_cols = priority_num[:4]
+
+        # Categorical: try cardinality ≤ 50, fall back to ≤ 200
+        def _pick_cats(max_card):
+            return [
+                c for c in df.select_dtypes(include="object").columns
+                if not any(kw in c.lower() for kw in skip_cat_kws)
+                and 1 < df[c].nunique() <= max_card
+            ]
+
+        cat_cols = _pick_cats(50) or _pick_cats(200)
+        priority_cat_kws = ["category", "region", "segment", "department",
+                            "channel", "type", "status", "group", "product", "name"]
+        cat_cols_sorted = sorted(
+            cat_cols,
+            key=lambda c: (0 if any(p in c.lower() for p in priority_cat_kws) else 1,
+                           df[c].nunique()),
+        )
+
+        # Main metric: driver target → first currency col → first any numeric
+        target = (
+            da.get("drivers", {}).get("target")
+            or next((c for c in priority_num if _is_currency(c)), None)
+            or (priority_num[0] if priority_num else None)
+        )
+
+        # Validate target is actually in df and numeric
+        if target and (target not in df.columns or target not in all_num):
+            target = priority_num[0] if priority_num else None
+
+        # Date column — use coerce so partial failures don't discard the column
+        date_col = None
+        for c in df.columns:
+            if any(kw in c.lower() for kw in ["date", "time", "month", "week", "year", "period"]):
+                _parsed = pd.to_datetime(df[c], errors="coerce")
+                if _parsed.notna().mean() >= 0.7:   # at least 70 % parseable
+                    date_col = c
+                    break
+
+        # ── Section header ────────────────────────────────────────────────────
+        st.markdown("""
+        <div class="section-header" style="margin-top:0.5rem;">
+            <div class="section-header-icon">📊</div>
+            <div class="section-header-text">Dashboard</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── KPI Cards ─────────────────────────────────────────────────────────
+        if kpi_cols:
+            kpi_cols_ui = st.columns(len(kpi_cols))
+            for _ki, _kc in enumerate(kpi_cols):
+                _ktotal = df[_kc].sum()
+                _kmean  = df[_kc].mean()
+                _klabel = _kc.replace("_", " ").title()
+                with kpi_cols_ui[_ki]:
+                    st.markdown(f"""
+                    <div style="
+                        background:linear-gradient(135deg,#1a2942 0%,#0d1b2a 100%);
+                        border-radius:16px;
+                        padding:1.1rem 1.2rem 1rem 1.2rem;
+                        box-shadow:0 4px 18px rgba(0,0,0,0.13);
+                        color:white;
+                        min-height:110px;
+                    ">
+                        <div style="font-size:0.6rem;font-weight:700;text-transform:uppercase;
+                                    letter-spacing:0.12em;color:#94a3b8;margin-bottom:0.45rem;">
+                            {_klabel}
+                        </div>
+                        <div style="font-size:1.45rem;font-weight:800;color:#fff;
+                                    letter-spacing:-0.02em;line-height:1.1;margin-bottom:0.3rem;">
+                            {_fmt_kpi(_ktotal, _kc)}
+                        </div>
+                        <div style="font-size:0.73rem;color:#94a3b8;">
+                            avg {_fmt_kpi(_kmean, _kc)} / row &nbsp;·&nbsp; {df[_kc].count():,} values
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.info("No numeric columns found for KPI cards.")
+
+        st.markdown("<div style='height:1.1rem;'></div>", unsafe_allow_html=True)
+
+        # ── Charts row ────────────────────────────────────────────────────────
+        if target:
+            _dchart_l, _dchart_r = st.columns(2)
+
+            # LEFT — bar by top category, or histogram if no categoricals
+            with _dchart_l:
+                if cat_cols_sorted:
+                    _best_cat = cat_cols_sorted[0]
+                    _grp_bar = (
+                        df.groupby(_best_cat)[target]
+                        .sum()
+                        .sort_values(ascending=False)
+                        .head(10)
+                        .reset_index()
+                    )
+                    _fig_bar = px.bar(
+                        _grp_bar,
+                        x=_best_cat,
+                        y=target,
+                        title=(f"{target.replace('_',' ').title()} "
+                               f"by {_best_cat.replace('_',' ').title()}"),
+                        color_discrete_sequence=["#1a3a5c"],
+                    )
+                    _fig_bar.update_layout(
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        margin=dict(l=10, r=10, t=40, b=10), height=300,
+                        showlegend=False, font=dict(color="#1c1c1e"),
+                        title_font=dict(size=13, color="#1c1c1e"),
+                        xaxis=dict(title="", tickfont=dict(size=10)),
+                        yaxis=dict(title="", tickfont=dict(size=10)),
+                    )
+                    st.plotly_chart(_fig_bar, use_container_width=True)
+                else:
+                    # Fallback: histogram of main numeric col
+                    _fig_hist = px.histogram(
+                        df, x=target,
+                        title=f"Distribution of {target.replace('_',' ').title()}",
+                        color_discrete_sequence=["#1a3a5c"],
+                        nbins=20,
+                    )
+                    _fig_hist.update_layout(
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        margin=dict(l=10, r=10, t=40, b=10), height=300,
+                        showlegend=False, font=dict(color="#1c1c1e"),
+                        title_font=dict(size=13, color="#1c1c1e"),
+                    )
+                    st.plotly_chart(_fig_hist, use_container_width=True)
+
+            # RIGHT — time trend, second cat bar, or second numeric histogram
+            with _dchart_r:
+                if date_col:
+                    try:
+                        _tmp = df.copy()
+                        _tmp[date_col] = pd.to_datetime(_tmp[date_col], errors="coerce")
+                        _tmp = _tmp.dropna(subset=[date_col]).sort_values(date_col)
+                        _n_unique_dates = _tmp[date_col].nunique()
+                        if _n_unique_dates > 60:
+                            _tmp["_period"] = _tmp[date_col].dt.to_period("M").astype(str)
+                        elif _n_unique_dates > 12:
+                            _tmp["_period"] = _tmp[date_col].dt.to_period("W").astype(str)
+                        else:
+                            _tmp["_period"] = _tmp[date_col].dt.to_period("D").astype(str)
+                        _grp_line = _tmp.groupby("_period")[target].sum().reset_index()
+                        _grp_line.columns = ["Period", target]
+                        _fig_line = px.line(
+                            _grp_line, x="Period", y=target,
+                            title=f"{target.replace('_',' ').title()} Over Time",
+                            color_discrete_sequence=["#f59e0b"],
+                            markers=True,
+                        )
+                        _fig_line.update_layout(
+                            plot_bgcolor="white", paper_bgcolor="white",
+                            margin=dict(l=10, r=10, t=40, b=10), height=300,
+                            showlegend=False, font=dict(color="#1c1c1e"),
+                            title_font=dict(size=13, color="#1c1c1e"),
+                            xaxis=dict(title="", tickfont=dict(size=9)),
+                            yaxis=dict(title="", tickfont=dict(size=10)),
+                        )
+                        st.plotly_chart(_fig_line, use_container_width=True)
+                    except Exception:
+                        pass  # silently skip broken date column
+                elif len(cat_cols_sorted) >= 2:
+                    _second_cat = cat_cols_sorted[1]
+                    _grp_bar2 = (
+                        df.groupby(_second_cat)[target]
+                        .sum()
+                        .sort_values(ascending=False)
+                        .head(10)
+                        .reset_index()
+                    )
+                    _fig_bar2 = px.bar(
+                        _grp_bar2, x=_second_cat, y=target,
+                        title=(f"{target.replace('_',' ').title()} "
+                               f"by {_second_cat.replace('_',' ').title()}"),
+                        color_discrete_sequence=["#3b82f6"],
+                    )
+                    _fig_bar2.update_layout(
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        margin=dict(l=10, r=10, t=40, b=10), height=300,
+                        showlegend=False, font=dict(color="#1c1c1e"),
+                        title_font=dict(size=13, color="#1c1c1e"),
+                        xaxis=dict(title="", tickfont=dict(size=10)),
+                        yaxis=dict(title="", tickfont=dict(size=10)),
+                    )
+                    st.plotly_chart(_fig_bar2, use_container_width=True)
+                elif len(priority_num) >= 2:
+                    # Fallback: histogram of second numeric col
+                    _sec_num = priority_num[1]
+                    _fig_hist2 = px.histogram(
+                        df, x=_sec_num,
+                        title=f"Distribution of {_sec_num.replace('_',' ').title()}",
+                        color_discrete_sequence=["#3b82f6"],
+                        nbins=20,
+                    )
+                    _fig_hist2.update_layout(
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        margin=dict(l=10, r=10, t=40, b=10), height=300,
+                        showlegend=False, font=dict(color="#1c1c1e"),
+                        title_font=dict(size=13, color="#1c1c1e"),
+                    )
+                    st.plotly_chart(_fig_hist2, use_container_width=True)
+
+        # ── Top / Bottom performers table ─────────────────────────────────────
+        if target and cat_cols_sorted:
+            _perf_cat = cat_cols_sorted[0]
+            _grp_perf = (
+                df.groupby(_perf_cat)[target]
+                .agg(["sum", "mean", "count"])
+                .rename(columns={"sum": "Total", "mean": "Average", "count": "Count"})
+                .sort_values("Total", ascending=False)
+            )
+            _n_groups = len(_grp_perf)
+            _n_show   = min(5, max(1, _n_groups // 2)) if _n_groups >= 4 else _n_groups
+
+            st.markdown("""
+            <div class="section-header" style="margin-top:0.2rem;">
+                <div class="section-header-icon">🏅</div>
+                <div class="section-header-text">Top &amp; Bottom Performers</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            _perf_l, _perf_r = st.columns(2)
+            _tgt_label = target.replace("_", " ").title()
+            _cat_label = _perf_cat.replace("_", " ").title()
+
+            with _perf_l:
+                _top = _grp_perf.head(_n_show).reset_index()
+                _top["Total"]   = _top["Total"].apply(lambda v: _fmt_kpi(v, target))
+                _top["Average"] = _top["Average"].apply(lambda v: _fmt_kpi(v, target))
+                _top.columns    = [_cat_label, "Total", "Avg", "Rows"]
+                st.markdown(f"**🟢 Top {_n_show} by {_tgt_label}**")
+                st.dataframe(_top, use_container_width=True, hide_index=True)
+
+            with _perf_r:
+                if _n_groups > _n_show:
+                    _bot = _grp_perf.tail(_n_show).reset_index()
+                    _bot["Total"]   = _bot["Total"].apply(lambda v: _fmt_kpi(v, target))
+                    _bot["Average"] = _bot["Average"].apply(lambda v: _fmt_kpi(v, target))
+                    _bot.columns    = [_cat_label, "Total", "Avg", "Rows"]
+                    st.markdown(f"**🔴 Bottom {_n_show} by {_tgt_label}**")
+                    st.dataframe(_bot, use_container_width=True, hide_index=True)
+
+    except Exception:
+        pass  # never let a dashboard error break the rest of the app
+
+
 def generate_report_html(filename, summary, history, filename2=None):
     """Generate a formatted HTML report of the session for download."""
     now = datetime.now().strftime("%B %d, %Y at %I:%M %p")
@@ -3125,10 +3417,11 @@ if uploaded_file is not None or using_sample or _using_gs:
             else:
                 _vc = _col_s.value_counts().head(10)
                 with _pc4: _metric_html("Top Value", str(_vc.index[0]) if len(_vc) > 0 else "N/A")
-                _pfig = px.bar(x=_vc.index.astype(str), y=_vc.values,
+                _vc_df = pd.DataFrame({"value": _vc.index.astype(str), "count": _vc.values})
+                _pfig = px.bar(_vc_df, x="value", y="count",
                                title=f"Top values in {_prof_col}",
                                color_discrete_sequence=["#f59e0b"],
-                               labels={"x": _prof_col, "y": "Count"})
+                               labels={"value": _prof_col, "count": "Count"})
                 _pfig.update_layout(plot_bgcolor="white", paper_bgcolor="white",
                                     margin=dict(l=10,r=10,t=36,b=10), height=220,
                                     showlegend=False)
@@ -3286,6 +3579,12 @@ if uploaded_file is not None or using_sample or _using_gs:
                 except Exception:
                     st.session_state.request_count -= 1
                     st.session_state.advanced_questions = []
+
+    # ── Dashboard ─────────────────────────────────────────────────────────────
+    build_dashboard(df, _da)
+
+    st.markdown("<hr style='border:none;border-top:1px solid #e2e8f0;margin:1.5rem 0 1.2rem 0;'>",
+                unsafe_allow_html=True)
 
     # Executive summary display (strip chart JSON and any markdown headers)
     summary_clean = st.session_state.summary.split("---CHART---")[0].strip()
