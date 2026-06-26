@@ -52,55 +52,39 @@ if "tour_active" not in st.session_state:
     st.session_state.tour_active = False
 if "tour_step" not in st.session_state:
     st.session_state.tour_step = 0
+if "_last_error" not in st.session_state:
+    st.session_state["_last_error"] = None
 
-# ── Industry templates ─────────────────────────────────────────────────────────
-INDUSTRY_TEMPLATES = {
-    "Auto-detect from data": [],
-    "Sales & Revenue": [
-        "What are the top 5 products by total sales?",
-        "Which region had the highest profit margin?",
-        "Which customer segment is most profitable?",
-        "Are there products selling well but losing money?",
-        "What is the total sales by category?",
-        "What is the average order value by region?"
-    ],
-    "Human Resources": [
-        "What is the headcount by department?",
-        "Which department has the highest turnover?",
-        "What is the average salary by job level?",
-        "What is the gender breakdown by department?",
-        "Which department has the most vacancies?",
-        "What is the average employee tenure?"
-    ],
-    "Finance": [
-        "What is total revenue vs total expenses?",
-        "Which cost category is the largest?",
-        "What is the profit margin by month?",
-        "Which department has the highest budget variance?",
-        "What are the top 5 expense categories?",
-        "What is the year-over-year growth rate?"
-    ],
-    "Marketing": [
-        "Which campaign had the highest conversion rate?",
-        "What is the cost per acquisition by channel?",
-        "Which channel drives the most revenue?",
-        "What is the ROI by campaign?",
-        "Which audience segment converts best?",
-        "What is the average click-through rate?"
-    ],
-    "Inventory": [
-        "Which products are below reorder point?",
-        "What is the inventory turnover by category?",
-        "Which items have the highest carrying cost?",
-        "What is the average days to sell by product?",
-        "Which supplier has the most delays?",
-        "What is the stockout rate by category?"
-    ]
+# ── Industry template themes (used as prompting hints, not as literal questions) ─
+INDUSTRY_TEMPLATE_THEMES = {
+    "Auto-detect from data": "",
+    "Sales & Revenue": (
+        "Focus on: top-performing products, regional or segment breakdowns, "
+        "profit margins, revenue trends, order values, and underperforming items."
+    ),
+    "Human Resources": (
+        "Focus on: headcount by group, salary distributions, tenure, turnover, "
+        "vacancy rates, and workforce composition."
+    ),
+    "Finance": (
+        "Focus on: revenue vs expenses, cost categories, margin trends, "
+        "budget variances, year-over-year growth, and top expense drivers."
+    ),
+    "Marketing": (
+        "Focus on: campaign performance, conversion rates, cost per acquisition, "
+        "channel ROI, audience segments, and click-through rates."
+    ),
+    "Inventory": (
+        "Focus on: stock levels, reorder points, turnover rates, carrying costs, "
+        "days to sell, supplier performance, and stockout risks."
+    ),
 }
+# Keep the keys list for the selectbox
+INDUSTRY_TEMPLATES = {k: [] for k in INDUSTRY_TEMPLATE_THEMES}
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="ARIA — AI Research & Insight Analyst",
+    page_title="ARIA Business Intelligence Solution",
     page_icon="🔶",
     layout="wide"
 )
@@ -595,7 +579,8 @@ with st.sidebar:
         <div class="sidebar-brand-icon">🔶</div>
         <div>
             <div class="sidebar-brand-text">ARIA</div>
-            <div class="sidebar-brand-sub">AI Research & Insight Analyst</div>
+            <div class="sidebar-brand-sub">Business Intelligence Solution</div>
+            <div class="sidebar-brand-sub" style="font-size:0.62rem;opacity:0.7;margin-top:1px;">AI Research &amp; Insight Analyst</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -687,8 +672,11 @@ st.markdown("""
         <span style="background: linear-gradient(135deg, #1c1c1e 0%, #f59e0b 60%, #d97706 100%);
                      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
                      background-clip: text;">ARIA</span>
-        <span style="font-size:1.1rem; font-weight:400; color:#6a6a6a; margin-left:0.75rem; vertical-align:middle;">
-            AI Research & Insight Analyst
+        <span style="font-size:1.1rem; font-weight:700; color:#3a3a3a; margin-left:0.75rem; vertical-align:middle;">
+            Business Intelligence Solution
+        </span>
+        <span style="font-size:0.75rem; font-weight:400; color:#9a9a9a; margin-left:0.6rem; vertical-align:middle;">
+            AI Research &amp; Insight Analyst
         </span>
     </div>
     <p style="color: #6a6a6a; font-size: 1rem; margin: 0; font-weight: 400;">
@@ -1481,18 +1469,37 @@ def get_summary(df, prompt, df2=None):
     return message.content[0].text
 
 
-def get_suggested_questions(columns):
-    """Generate 6 suggested questions using only column names — no data context needed."""
+def get_suggested_questions(df, industry_theme=""):
+    """Generate 6 suggested questions grounded in the actual columns and sample values."""
+    col_info = []
+    num_cols = set(df.select_dtypes(include="number").columns)
+    cat_cols = [c for c in df.columns if c not in num_cols]
+    for col in df.columns:
+        dtype = "numeric" if col in num_cols else "categorical"
+        if col in num_cols:
+            mn, mx = df[col].min(), df[col].max()
+            col_info.append(f"  {col} (numeric, range {mn:.0f}–{mx:.0f})")
+        else:
+            sample_vals = df[col].dropna().unique()[:4].tolist()
+            col_info.append(f"  {col} (categorical, e.g. {sample_vals})")
+
+    theme_hint = f"\nTheme focus: {industry_theme}\n" if industry_theme else ""
     message = client.messages.create(
         model=MODEL,
-        max_tokens=256,
+        max_tokens=300,
         messages=[{
             "role": "user",
             "content": (
-                f"A business dataset has these columns: {', '.join(columns)}\n"
-                "Suggest exactly 6 short, specific questions a business manager would ask "
-                "about this data. Return only the 6 questions as a numbered list, nothing else. "
-                "Each question must be under 10 words."
+                "A business dataset has EXACTLY these columns (use these exact names):\n"
+                + "\n".join(col_info)
+                + f"\n{theme_hint}"
+                "\nGenerate exactly 6 short questions a business manager would ask about "
+                "this data. RULES:\n"
+                "- Every question MUST use the exact column names listed above\n"
+                "- Only reference columns that exist in the list\n"
+                "- Each question must be answerable from these columns alone\n"
+                "- Each question must be under 12 words\n"
+                "Return only the 6 questions as a numbered list, nothing else."
             )
         }]
     )
@@ -1509,22 +1516,29 @@ def get_advanced_questions(df):
     for col in df.columns:
         dtype    = "numeric" if col in num_cols else "categorical"
         n_unique = df[col].nunique()
-        col_info.append(f"  {col} ({dtype}, {n_unique:,} unique values)")
+        if col in num_cols:
+            mn, mx = df[col].min(), df[col].max()
+            col_info.append(f"  {col} ({dtype}, {n_unique:,} unique, range {mn:.0f}–{mx:.0f})")
+        else:
+            sample_vals = df[col].dropna().unique()[:3].tolist()
+            col_info.append(f"  {col} ({dtype}, {n_unique:,} unique, e.g. {sample_vals})")
 
     message = client.messages.create(
         model=MODEL,
-        max_tokens=400,
+        max_tokens=450,
         messages=[{
             "role": "user",
             "content": (
-                f"A business dataset has these columns:\n"
+                "A business dataset has EXACTLY these columns (use these exact names):\n"
                 + "\n".join(col_info) +
                 "\n\nGenerate exactly 8 advanced, consultant-level analytical questions "
                 "that a McKinsey analyst would ask about this specific dataset. "
                 "Focus on: hidden patterns, risk concentration, efficiency gaps, "
                 "cross-variable relationships, anomalies, and strategic implications. "
-                "Every question must be directly answerable from the columns listed — "
-                "do not reference columns that are not in the list. "
+                "STRICT RULES:\n"
+                "- Use ONLY the exact column names listed above — no invented names\n"
+                "- Every question must be directly answerable from the columns listed\n"
+                "- Do NOT reference any column or concept not in the list above\n"
                 "Return only the 8 questions as a numbered list, nothing else. "
                 "Each question must be under 12 words."
             )
@@ -2291,7 +2305,7 @@ def generate_report_html(filename, summary, history, filename2=None):
     <h2>Analysis</h2>
     {rows if rows else "<p>No questions asked yet.</p>"}
     <div class="footer">
-        Generated by ARIA — AI Research &amp; Insight Analyst
+        Generated by ARIA Business Intelligence Solution — AI Research &amp; Insight Analyst
     </div>
     <script>{chart_scripts}</script>
 </body>
@@ -2314,15 +2328,25 @@ def compute_confidence(answer: str):
 
 
 # ── Follow-up question generator ──────────────────────────────────────────────
-def get_followup_questions(question: str, answer: str, client, model: str) -> list:
-    """Generate 3 short follow-up questions based on the Q&A."""
+def get_followup_questions(question: str, answer: str, client, model: str,
+                           columns: list = None) -> list:
+    """Generate 3 short follow-up questions based on the Q&A, constrained to actual columns."""
     try:
+        col_constraint = ""
+        if columns:
+            col_constraint = (
+                f"\nThe dataset has ONLY these columns: {', '.join(columns)}\n"
+                "Every follow-up question MUST reference only these exact column names. "
+                "Do NOT invent or assume any column not in this list.\n"
+            )
         msg = client.messages.create(
             model=model,
-            max_tokens=200,
+            max_tokens=220,
             messages=[{"role": "user", "content":
                 f"""Based on this data analysis Q&A, suggest exactly 3 short follow-up questions.
+{col_constraint}
 Write one question per line, no numbering or bullets — just the question text.
+Each question must be directly answerable from the columns listed.
 
 Q: {question}
 A (summary): {answer[:350]}
@@ -2434,7 +2458,7 @@ def generate_pdf_report(filename: str, summary: str, history: list) -> bytes:
     pdf.set_font("Helvetica", "I", 8)
     pdf.set_text_color(150, 150, 150)
     pdf.set_x(pdf.l_margin)
-    pdf.multi_cell(W, 6, "Generated by ARIA - AI Research & Insight Analyst | Built by Connor Lewis")
+    pdf.multi_cell(W, 6, "Generated by ARIA Business Intelligence Solution - AI Research & Insight Analyst | Built by Connor Lewis")
 
     return bytes(pdf.output())
 
@@ -2494,18 +2518,11 @@ def _metric_html(label, value):
     """, unsafe_allow_html=True)
 
 
-# ── Query param triggers (tour + voice) ───────────────────────────────────────
+# ── Query param triggers (tour) ────────────────────────────────────────────────
 try:
     if st.query_params.get("tour") == "1":
         st.session_state.tour_active = True
         st.session_state.tour_step = 0
-        st.query_params.clear()
-        st.rerun()
-    elif st.query_params.get("q"):
-        _voice_q = st.query_params["q"].strip()
-        if _voice_q:
-            st.session_state.question_input = _voice_q
-            st.session_state["_auto_analyze"] = True
         st.query_params.clear()
         st.rerun()
 except Exception:
@@ -3085,23 +3102,33 @@ if uploaded_file is not None or using_sample:
         st.session_state.last_suggestion_key = suggestion_key
 
         if df2 is not None:
-            st.session_state.suggestions = [
-                "What changed the most between the two files?",
-                "Which categories grew and which declined?",
-                "What is the overall change in total revenue?",
-                "Which region improved the most?",
-                "Are there any categories only in one file?",
-                "What is the percentage change by segment?"
-            ]
-            st.session_state.advanced_questions = []
-        elif industry != "Auto-detect from data":
-            st.session_state.suggestions = INDUSTRY_TEMPLATES[industry]
+            # Build two-file questions using actual shared column names
+            _shared_num = [c for c in df.columns
+                           if c in df2.columns and pd.api.types.is_numeric_dtype(df[c])]
+            _shared_cat = [c for c in df.columns
+                           if c in df2.columns and not pd.api.types.is_numeric_dtype(df[c])]
+            _df2_qs = ["What changed the most between the two files?"]
+            if _shared_num:
+                _df2_qs.append(f"What is the overall change in {_shared_num[0]}?")
+                _df2_qs.append(f"Which rows had the biggest change in {_shared_num[0]}?")
+            if _shared_cat and _shared_num:
+                _df2_qs.append(f"Which {_shared_cat[0]} grew and which declined?")
+                _df2_qs.append(
+                    f"What is the percentage change in {_shared_num[0]} by {_shared_cat[0]}?"
+                )
+            if len(_shared_num) > 1:
+                _df2_qs.append(f"Compare {_shared_num[0]} and {_shared_num[1]} across both files.")
+            else:
+                _df2_qs.append("Are there any rows only in one file?")
+            st.session_state.suggestions = _df2_qs[:6]
             st.session_state.advanced_questions = []
         else:
+            # Always generate questions from actual data — industry selection is a theme hint
+            _theme = INDUSTRY_TEMPLATE_THEMES.get(industry, "")
             with st.spinner("Generating suggested questions..."):
                 try:
                     st.session_state.request_count += 1
-                    raw = get_suggested_questions(df.columns.tolist())
+                    raw = get_suggested_questions(df, industry_theme=_theme)
                     lines = [
                         line.strip() for line in raw.strip().split("\n")
                         if line.strip()
@@ -3112,14 +3139,21 @@ if uploaded_file is not None or using_sample:
                     ][:6]
                 except Exception:
                     st.session_state.request_count -= 1
-                    st.session_state.suggestions = [
-                        "What are the top 5 items by value?",
-                        "Which category performs best?",
-                        "What is the overall total?",
-                        "Which entry has the highest value?",
-                        "Show a breakdown by category",
-                        "What are the key trends?"
-                    ]
+                    # Safe fallback: use real column names so questions are always valid
+                    _num_cols = df.select_dtypes(include="number").columns.tolist()
+                    _cat_cols = df.select_dtypes(exclude="number").columns.tolist()
+                    _fb = []
+                    if _num_cols:
+                        _fb.append(f"What is the total {_num_cols[0]}?")
+                        _fb.append(f"Which rows have the highest {_num_cols[0]}?")
+                    if _cat_cols and _num_cols:
+                        _fb.append(f"What is {_num_cols[0]} broken down by {_cat_cols[0]}?")
+                        _fb.append(f"Which {_cat_cols[0]} has the highest {_num_cols[0]}?")
+                    if len(_num_cols) > 1:
+                        _fb.append(f"Is there a relationship between {_num_cols[0]} and {_num_cols[1]}?")
+                    if _cat_cols:
+                        _fb.append(f"How many unique values are in {_cat_cols[0]}?")
+                    st.session_state.suggestions = _fb[:6]
 
             with st.spinner("Generating advanced questions..."):
                 try:
@@ -3624,70 +3658,11 @@ if uploaded_file is not None or using_sample:
     if "_pending_question" in st.session_state:
         st.session_state.question_input = st.session_state.pop("_pending_question")
 
-    _q_col, _mic_col = st.columns([11, 1])
-    with _q_col:
-        question = st.text_input(
-            "Type your question or request here:",
-            placeholder="e.g. Which region had the highest sales? or Show me the monthly sales trend.",
-            key="question_input"
-        )
-    with _mic_col:
-        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-        components.html("""
-        <div style="display:flex;align-items:center;justify-content:center;height:38px;">
-            <button id="micBtn" title="Click to speak your question"
-                onclick="startVoice()"
-                style="background:linear-gradient(135deg,#f59e0b,#d97706);
-                       border:none;border-radius:50%;width:38px;height:38px;
-                       font-size:17px;cursor:pointer;display:flex;align-items:center;
-                       justify-content:center;box-shadow:0 2px 8px rgba(245,158,11,0.4);
-                       transition:transform 0.15s,box-shadow 0.15s;">
-                🎤
-            </button>
-        </div>
-        <style>
-            @keyframes pulse {
-                0%,100% { box-shadow:0 0 0 0 rgba(245,158,11,0.6); }
-                50%      { box-shadow:0 0 0 8px rgba(245,158,11,0); }
-            }
-            #micBtn.listening {
-                background:linear-gradient(135deg,#ef4444,#dc2626) !important;
-                animation: pulse 1s infinite;
-            }
-        </style>
-        <script>
-        function startVoice() {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRecognition) {
-                alert("Voice input isn't supported in this browser.\\nPlease use Chrome or Edge.");
-                return;
-            }
-            const btn = document.getElementById('micBtn');
-            const rec = new SpeechRecognition();
-            rec.lang = 'en-US';
-            rec.interimResults = false;
-            rec.maxAlternatives = 1;
-            btn.classList.add('listening');
-            btn.textContent = '🔴';
-            rec.start();
-            rec.onresult = function(e) {
-                const transcript = e.results[0][0].transcript;
-                btn.classList.remove('listening');
-                btn.textContent = '✓';
-                setTimeout(() => { btn.textContent = '🎤'; }, 1500);
-                window.parent.location.href = '?q=' + encodeURIComponent(transcript);
-            };
-            rec.onerror = function() {
-                btn.classList.remove('listening');
-                btn.textContent = '🎤';
-            };
-            rec.onend = function() {
-                btn.classList.remove('listening');
-                if (btn.textContent === '🔴') btn.textContent = '🎤';
-            };
-        }
-        </script>
-        """, height=50)
+    question = st.text_input(
+        "Type your question or request here:",
+        placeholder="e.g. Which region had the highest sales? or Show me the monthly sales trend.",
+        key="question_input"
+    )
 
     # Show usage counter
     remaining = MAX_REQUESTS_PER_SESSION - st.session_state.request_count
@@ -3727,8 +3702,12 @@ if uploaded_file is not None or using_sample:
                     clean_answer, chart_data = try_render_chart(raw_answer)
                     _conf_level, _conf_color, _conf_tip = compute_confidence(clean_answer)
 
-                    # Generate follow-up questions and store in session_state
-                    _followups = get_followup_questions(question, clean_answer, client, MODEL)
+                    # Generate follow-up questions constrained to actual columns
+                    _all_cols = list(df.columns) + (list(df2.columns) if df2 is not None else [])
+                    _followups = get_followup_questions(
+                        question, clean_answer, client, MODEL,
+                        columns=_all_cols
+                    )
 
                     st.session_state.history.append({
                         "question": question,
@@ -3742,8 +3721,49 @@ if uploaded_file is not None or using_sample:
                     st.session_state["_followups"] = _followups
                 except Exception as e:
                     st.session_state.request_count -= 1
-                    st.warning("I couldn't answer that. Try rephrasing your question.")
-                    st.caption(f"Technical detail: {str(e)}")
+                    _err_str = str(e).lower()
+                    if "rate_limit" in _err_str or "rate limit" in _err_str or "429" in _err_str:
+                        _err_msg = "ARIA is processing too many requests right now. Please wait a few seconds and try again."
+                    elif "connection" in _err_str or "network" in _err_str or "timeout" in _err_str:
+                        _err_msg = "Couldn't reach ARIA's AI service. Check your internet connection and try again."
+                    elif "context_length" in _err_str or "too long" in _err_str or "max_tokens" in _err_str:
+                        _err_msg = "Your question or dataset is too large to process in one request. Try a more specific question or upload a smaller sample of your data."
+                    elif "authentication" in _err_str or "api_key" in _err_str or "401" in _err_str:
+                        _err_msg = "There's an issue with the API connection. Please contact the app administrator."
+                    elif "overloaded" in _err_str or "529" in _err_str or "503" in _err_str:
+                        _err_msg = "ARIA's AI service is temporarily overloaded. Please try again in a moment."
+                    else:
+                        _err_msg = "Something went wrong while analyzing your data. Please try rephrasing your question or try again in a moment."
+                    st.session_state["_last_error"] = _err_msg
+
+    # ── Error display (friendly, no raw exceptions) ────────────────────────────
+    if st.session_state.get("_last_error"):
+        _last_err = st.session_state.pop("_last_error")
+        st.markdown(f"""
+        <div style="background:#fff8f0;border:1.5px solid #f59e0b;border-radius:12px;
+                    padding:1rem 1.3rem;margin-top:0.75rem;display:flex;align-items:flex-start;gap:0.7rem;">
+            <span style="font-size:1.3rem;line-height:1;">⚠️</span>
+            <div>
+                <div style="font-weight:700;color:#92400e;font-size:0.9rem;margin-bottom:0.2rem;">
+                    Couldn't complete that analysis
+                </div>
+                <div style="color:#78350f;font-size:0.85rem;line-height:1.5;">{_last_err}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── Unanswerable phrases from Claude ────────────────────────────────────────
+    _UNANSWERABLE_PHRASES = [
+        "cannot be answered", "cannot be determined", "cannot determine",
+        "not possible to determine", "data does not contain", "not enough information",
+        "cannot calculate", "unable to answer", "not available in the data",
+        "this information is not", "no data available", "column does not exist",
+        "not present in the data", "does not include this", "no such column",
+    ]
+
+    def _is_unanswerable(text: str) -> bool:
+        t = text.lower()
+        return any(phrase in t for phrase in _UNANSWERABLE_PHRASES)
 
     # ── Persistent answer display — renders on every rerun from session_state ──
     if st.session_state.history:
@@ -3755,55 +3775,85 @@ if uploaded_file is not None or using_sample:
         _disp_tip      = st.session_state.get("_conf_tip", "")
         _disp_followups = st.session_state.get("_followups", [])
 
-        _encoded = base64.b64encode(_disp_answer.encode()).decode()
-        st.markdown(f"""
-        <div class="section-header" style="margin-top:1.2rem;">
-            <div class="section-header-icon">📊</div>
-            <div class="section-header-text">Analysis</div>
-            <span style="margin-left:auto;font-size:0.65rem;font-weight:700;
-                         text-transform:uppercase;letter-spacing:0.08em;
-                         color:{_disp_color};border:1.5px solid {_disp_color};
-                         border-radius:20px;padding:2px 9px;"
-                  title="{_disp_tip}">
-                {_disp_conf} CONFIDENCE
-            </span>
-        </div>
-        """, unsafe_allow_html=True)
-        _answer_html = _md_to_html(fix_dollar_signs(_disp_answer))
-        st.markdown(f'<div class="answer-card">{_answer_html}</div>', unsafe_allow_html=True)
-        render_chart_data(_disp_chart)
-        components.html(
-            f"""<button onclick="
-                navigator.clipboard.writeText(atob('{_encoded}')).then(()=>{{
-                    this.textContent='✓ Copied!';
-                    this.style.color='#16a34a';
-                    this.style.borderColor='#bbf7d0';
-                    setTimeout(()=>{{this.textContent='📋 Copy';
-                        this.style.color='#d97706';
-                        this.style.borderColor='#fcd34d';}},2000);
-                }});"
-                style="background:transparent;border:1.5px solid #fcd34d;
-                       border-radius:20px;padding:3px 12px;font-size:11px;
-                       color:#d97706;cursor:pointer;font-family:inherit;
-                       margin-top:2px;">
-                📋 Copy
-            </button>""",
-            height=36,
-        )
-        if _disp_followups:
-            st.markdown(
-                '<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;'
-                'letter-spacing:0.1em;color:#7a7a7a;margin:0.8rem 0 0.4rem 0;">'
-                '💬 Follow-up questions</div>',
-                unsafe_allow_html=True
+        # ── Detect "can't answer" responses and show a helpful card instead ──
+        if _is_unanswerable(_disp_answer):
+            st.markdown(f"""
+            <div style="background:#f0f9ff;border:1.5px solid #7dd3fc;border-radius:12px;
+                        padding:1rem 1.3rem;margin-top:0.75rem;">
+                <div style="font-weight:700;color:#0c4a6e;font-size:0.9rem;margin-bottom:0.4rem;">
+                    🔍 ARIA needs more context
+                </div>
+                <div style="color:#0369a1;font-size:0.85rem;line-height:1.6;">{_disp_answer}</div>
+                <div style="margin-top:0.7rem;font-size:0.78rem;color:#0369a1;font-weight:600;">
+                    💡 Tips: Check that your column names match what you're asking about,
+                    or try rephrasing — e.g. "What is the total by [column name]?"
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            if _disp_followups:
+                st.markdown(
+                    '<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;'
+                    'letter-spacing:0.1em;color:#7a7a7a;margin:0.8rem 0 0.4rem 0;">'
+                    '💬 You could try instead</div>',
+                    unsafe_allow_html=True
+                )
+                _fq_cols2 = st.columns(len(_disp_followups))
+                for _fqi2, _fq2 in enumerate(_disp_followups):
+                    if _fq_cols2[_fqi2].button(_fq2, key=f"cant_followup_{_fqi2}_{len(st.session_state.history)}"):
+                        st.session_state["_pending_question"] = _fq2
+                        st.session_state["_auto_analyze"] = True
+                        st.session_state["_followups"] = []
+                        st.rerun()
+        else:
+            _encoded = base64.b64encode(_disp_answer.encode()).decode()
+            st.markdown(f"""
+            <div class="section-header" style="margin-top:1.2rem;">
+                <div class="section-header-icon">📊</div>
+                <div class="section-header-text">Analysis</div>
+                <span style="margin-left:auto;font-size:0.65rem;font-weight:700;
+                             text-transform:uppercase;letter-spacing:0.08em;
+                             color:{_disp_color};border:1.5px solid {_disp_color};
+                             border-radius:20px;padding:2px 9px;"
+                      title="{_disp_tip}">
+                    {_disp_conf} CONFIDENCE
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+            _answer_html = _md_to_html(fix_dollar_signs(_disp_answer))
+            st.markdown(f'<div class="answer-card">{_answer_html}</div>', unsafe_allow_html=True)
+            render_chart_data(_disp_chart)
+            components.html(
+                f"""<button onclick="
+                    navigator.clipboard.writeText(atob('{_encoded}')).then(()=>{{
+                        this.textContent='✓ Copied!';
+                        this.style.color='#16a34a';
+                        this.style.borderColor='#bbf7d0';
+                        setTimeout(()=>{{this.textContent='📋 Copy';
+                            this.style.color='#d97706';
+                            this.style.borderColor='#fcd34d';}},2000);
+                    }});"
+                    style="background:transparent;border:1.5px solid #fcd34d;
+                           border-radius:20px;padding:3px 12px;font-size:11px;
+                           color:#d97706;cursor:pointer;font-family:inherit;
+                           margin-top:2px;">
+                    📋 Copy
+                </button>""",
+                height=36,
             )
-            _fq_cols = st.columns(len(_disp_followups))
-            for _fqi, _fq in enumerate(_disp_followups):
-                if _fq_cols[_fqi].button(_fq, key=f"followup_{_fqi}_{len(st.session_state.history)}"):
-                    st.session_state["_pending_question"] = _fq
-                    st.session_state["_auto_analyze"] = True
-                    st.session_state["_followups"] = []
-                    st.rerun()
+            if _disp_followups:
+                st.markdown(
+                    '<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;'
+                    'letter-spacing:0.1em;color:#7a7a7a;margin:0.8rem 0 0.4rem 0;">'
+                    '💬 Follow-up questions</div>',
+                    unsafe_allow_html=True
+                )
+                _fq_cols = st.columns(len(_disp_followups))
+                for _fqi, _fq in enumerate(_disp_followups):
+                    if _fq_cols[_fqi].button(_fq, key=f"followup_{_fqi}_{len(st.session_state.history)}"):
+                        st.session_state["_pending_question"] = _fq
+                        st.session_state["_auto_analyze"] = True
+                        st.session_state["_followups"] = []
+                        st.rerun()
 
     # ── Multi-turn conversation thread (#21) ─────────────────────────────────
     _all_history = st.session_state.history
